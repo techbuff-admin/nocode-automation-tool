@@ -1,0 +1,33 @@
+{
+    "name": "no-code-automation-tool",
+    "version": "1.0.0",
+    "main": "dist/main.js",
+    "scripts": {
+        "dev:renderer": "cd renderer && npm run dev",
+        "dev:main": "ts-node -r tsconfig-paths/register main.ts",
+        "dev:electron": "wait-on tcp:5173 && cross-env NODE_ENV=development electron .",
+        "dev": "concurrently \"npm:dev:renderer\" \"npm:dev:main\" \"npm:dev:electron\"",
+        "postinstall": "electron-builder install-app-deps",
+        "build": "tsc",
+        "start": "npm run build && concurrently \"npm:backend\" \"npm:renderer\" \"npm:electron\"",
+        "backend": "ts-node -r tsconfig-paths/register backend/systemChecks.ts",
+        "renderer": "cd renderer && npm run dev",
+        "electron": "wait-on tcp:5173 && electron ."
+    },
+    "devDependencies": {
+        "@types/klaw": "^3.0.6",
+        "@types/node": "^22.15.19",
+        "concurrently": "^8.2.0",
+        "electron": "^25.0.0",
+        "electron-builder": "^24.0.0",
+        "ts-node": "^10.9.1",
+        "tsconfig-paths": "^4.2.0",
+        "typescript": "^5.1.6",
+        "wait-on": "^7.0.1"
+    },
+    "dependencies": {
+        "allure-commandline": "^2.17.3",
+        "klaw": "^4.1.0",
+        "playwright": "^1.40.0"
+    }
+}
