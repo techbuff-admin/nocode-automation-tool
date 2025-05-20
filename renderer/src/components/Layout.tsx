@@ -21,9 +21,9 @@ export default function Layout({ children }: { children: ReactNode }) {
           <NavLink to="/projects" className="block text-gray-700">
            My Projects
             </NavLink>
-          <NavLink to="/project-setup" className="block text-gray-700">
+          {/* <NavLink to="/project-setup" className="block text-gray-700">
                New web project
-            </NavLink>
+            </NavLink> */}
           <NavLink
             to="/generate"
             className={({ isActive }) =>
