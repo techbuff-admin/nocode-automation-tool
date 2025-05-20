@@ -20,6 +20,8 @@ contextBridge.exposeInMainWorld('api', {
     caseCode: string;
   }) => ipcRenderer.invoke('case:add', opts),
   getFileTree: (projectDir: string) =>
-    ipcRenderer.invoke('fs:tree', projectDir),
+  ipcRenderer.invoke('fs:tree', projectDir),
+  listProjects: () => ipcRenderer.invoke('projects:list'),
+  getRootProjectsDir: () => ipcRenderer.invoke('projects:getRoot'),
 });
 

@@ -7,6 +7,7 @@ import Layout from './components/Layout';
 import { ChatProvider } from './context/ChatContext';
 import { ProjectProvider } from './context/ProjectContext';
 import ProjectSetup from './pages/ProjectSetup';
+import Projects from './pages/Projects';
 
 // import page components
 import Home from './pages/Home';
@@ -31,6 +32,7 @@ function AppRoutes() {
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/project-setup" element={<ProjectSetup />} />
+        <Route path="/projects" element={<Projects />} />
         <Route path="/generate" element={<Generate />} />
         <Route path="/actions" element={<Actions />} />
         <Route path="/suite" element={<Suite />} />

@@ -1,3 +1,4 @@
+import os from 'os';
 import { app, BrowserWindow, ipcMain, shell,dialog } from 'electron';
 import path from 'path';
 // main.ts (Electron main process)
@@ -9,7 +10,14 @@ import util from 'util';
 import klaw from 'klaw';
 
 const execAsync = util.promisify(exec);
-
+const ROOT_PROJECTS_DIR = path.join(os.homedir(), 'nca-projects');
+async function ensureProjectsDir() {
+  try {
+    await fs.mkdir(ROOT_PROJECTS_DIR, { recursive: true });
+  } catch (err) {
+    console.error('Could not create projects root:', err);
+  }
+}
 ipcMain.handle('select-directory', async () => {
   const { canceled, filePaths } = await dialog.showOpenDialog({
     properties: ['openDirectory']
@@ -37,31 +45,6 @@ async function createWindow() {
   }
   mainWindow.webContents.openDevTools({ mode: 'detach' });
 }
-
-// ipcMain.handle('project:create', async (_evt, { basePath, projectName }) => {
-//   const projectDir = path.join(basePath, projectName);
-//   // 1) Make the folder
-//   await fs.mkdir(projectDir, { recursive: true });
-
-//   // 2) Initialize npm & install Playwright
-//   await execAsync('npm init -y', { cwd: projectDir });
-//   await execAsync('npm install -D @playwright/test playwright', { cwd: projectDir });
-
-//   // 3) Download the browsers
-//   await execAsync('npx playwright install', { cwd: projectDir });
-
-//   // 4) Write a basic test file so users see something
-//   const testCode = `
-// import { test, expect } from '@playwright/test';
-// test('example', async ({ page }) => {
-//   await page.goto('https://example.com');
-//   await expect(page).toHaveTitle(/Example Domain/);
-// });
-//   `.trim();
-//   await fs.writeFile(path.join(projectDir, 'tests/example.spec.ts'), testCode, 'utf8');
-
-//   return projectDir;
-// });
 
 ipcMain.handle('project:create', async (_evt, { basePath, projectName }) => {
   const projectDir = path.join(basePath, projectName);
@@ -180,10 +163,21 @@ ipcMain.handle(
   }
 );
 ipcMain.handle('fs:tree', async (_evt, projectDir: string) => {
-  const items: { path: string; type: 'file' | 'dir' }[] = [];
-  return new Promise(resolve => {
+  // if the folder is gone, just return empty
+  try {
+    await fs.stat(projectDir);
+  } catch (err: any) {
+    if (err.code === 'ENOENT') {
+      return [];    // ← rather than throwing, we send back an empty tree
+    }
+    throw err;      // real errors bubble
+  }
+
+  // otherwise walk the tree
+  return new Promise<{ path: string; type: 'file' | 'dir' }[]>((resolve, reject) => {
+    const items: { path: string; type: 'file' | 'dir' }[] = [];
     klaw(projectDir)
-      .on('data', item => {
+      .on('data', (item) => {
         const rel = path.relative(projectDir, item.path);
         if (rel) {
           items.push({
@@ -192,8 +186,38 @@ ipcMain.handle('fs:tree', async (_evt, projectDir: string) => {
           });
         }
       })
-      .on('end', () => resolve(items));
+      .on('end', () => resolve(items))
+      .on('error', (e) => reject(e));
   });
 });
-app.whenReady().then(createWindow);
+// IPC handler to list all sub-folders under ROOT_PROJECTS_DIR
+ipcMain.handle('projects:list', async () => {
+  const entries = await fs.readdir(ROOT_PROJECTS_DIR, { withFileTypes: true });
+  return entries
+    .filter((d) => d.isDirectory())
+    .map((d) => ({
+      name: d.name,
+      path: path.join(ROOT_PROJECTS_DIR, d.name),
+    }));
+});
+// IPC handler to return the root path itself (so the UI can tell the user)
+ipcMain.handle('projects:getRoot', async () => {
+  return ROOT_PROJECTS_DIR;
+});
+
+app.whenReady().then(async () => {
+  // 1) Make sure the folder is there
+  await ensureProjectsDir();
+
+  // 2) Now spin up your window
+  createWindow();
+
+  // 3) On macOS re-open behavior
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createWindow();
+    }
+  });
+});
+
 app.on('window-all-closed', () => app.quit());

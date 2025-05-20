@@ -18,6 +18,9 @@ export default function Layout({ children }: { children: ReactNode }) {
           >
             Home
           </NavLink>
+          <NavLink to="/projects" className="block text-gray-700">
+           My Projects
+            </NavLink>
           <NavLink to="/project-setup" className="block text-gray-700">
                New web project
             </NavLink>
@@ -37,14 +40,14 @@ export default function Layout({ children }: { children: ReactNode }) {
           >
             Action Pool
           </NavLink>
-          {/* <NavLink
+          <NavLink
             to="/suite"
             className={({ isActive }) =>
               isActive ? 'block font-semibold' : 'block text-gray-700'
             }
           >
             Test Suite
-          </NavLink> */}
+          </NavLink>
         </nav>
 
         <div className="flex-1" />

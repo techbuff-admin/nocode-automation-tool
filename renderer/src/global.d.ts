@@ -25,6 +25,8 @@ declare global {
         basePath: string;
         projectName: string;
       }): Promise<string>; // returns the full project path
+      listProjects(): Promise<{name:string;path:string}[]>;
+      getRootProjectsDir(): Promise<string>;
     };
   }
 }
