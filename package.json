@@ -28,6 +28,7 @@
     "dependencies": {
         "allure-commandline": "^2.17.3",
         "klaw": "^4.1.0",
-        "playwright": "^1.40.0"
+        "playwright": "^1.40.0",
+        "react-json-view": "^1.21.3"
     }
 }

@@ -8,6 +8,7 @@ import { ChatProvider } from './context/ChatContext';
 import { ProjectProvider } from './context/ProjectContext';
 import ProjectSetup from './pages/ProjectSetup';
 import Projects from './pages/Projects';
+import MetaEditor from './components/MetaEditor';
 
 // import page components
 import Home from './pages/Home';
@@ -31,6 +32,7 @@ function AppRoutes() {
     <Layout>
       <Routes>
         <Route path="/" element={<Home />} />
+        <Route path="/meta" element={<MetaEditor />} />
         <Route path="/project-setup" element={<ProjectSetup />} />
         <Route path="/projects" element={<Projects />} />
         <Route path="/generate" element={<Generate />} />

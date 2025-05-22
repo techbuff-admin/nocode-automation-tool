@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer, shell } from 'electron';
+import { ProjectMeta } from './shared/types';
 
 // Expose safe APIs to renderer
 contextBridge.exposeInMainWorld('api', {
@@ -23,5 +24,10 @@ contextBridge.exposeInMainWorld('api', {
   ipcRenderer.invoke('fs:tree', projectDir),
   listProjects: () => ipcRenderer.invoke('projects:list'),
   getRootProjectsDir: () => ipcRenderer.invoke('projects:getRoot'),
+  loadMeta: (projectDir: string) =>
+    ipcRenderer.invoke('meta:load', projectDir) as Promise<ProjectMeta>,
+  saveMeta: (projectDir: string, meta: ProjectMeta) =>
+    ipcRenderer.invoke('meta:save', projectDir, meta),
+ 
 });
 

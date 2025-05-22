@@ -8,6 +8,8 @@ const DEV_URL = 'http://localhost:5173';
 import fs from 'fs/promises';
 import util from 'util';
 import klaw from 'klaw';
+import { ProjectMeta } from './shared/types'; 
+import { ProjectMetaService } from './backend/ProjectMetaService';
 
 const execAsync = util.promisify(exec);
 const ROOT_PROJECTS_DIR = path.join(os.homedir(), 'nca-projects');
@@ -74,7 +76,25 @@ export default defineConfig({
   reporter: [['list'], ['allure-playwright']],
 });`
   );
-
+ // 1) Write an initial metadata JSON
+ const initialMeta = {
+  name: projectName,
+  env: {
+    baseUrl: '',
+    timeout: 5000,
+    retries: 0,
+    headless: false,
+    elementWait: 0,
+  },
+  pages: [], // each page: { name, path, locators: [ { name, selector } ] }
+  suites:[],
+   // each suite: { name, path, cases: [ { name, path } ] }
+};
+await fs.writeFile(
+  path.join(projectDir, 'nca-config.json'),
+  JSON.stringify(initialMeta, null, 2),
+  'utf8'
+);
   return projectDir;
 });
 ipcMain.handle('tests:execute', (_, scriptPaths) =>
@@ -131,6 +151,8 @@ ipcMain.handle(
     // sanitize name → no spaces, lower-kebab
     const fileName = `${suiteName.trim().replace(/\s+/g, '-')}.spec.ts`;
     const filePath = path.join(projectDir, 'tests', fileName);
+      // ensure tests folder exists
+     await fs.mkdir(path.dirname(filePath), { recursive: true });
     const boilerplate = `
 import { test, expect } from '@playwright/test';
 
@@ -139,6 +161,21 @@ test.describe('${suiteName}', () => {
 });
     `.trim();
     await fs.writeFile(filePath, boilerplate, 'utf8');
+     // now load & update metadata JSON
+     const metaPath = path.join(projectDir, 'nca-config.json');
+     const raw = await fs.readFile(metaPath, 'utf8');
+     const meta: ProjectMeta = JSON.parse(raw);
+     meta.suites = meta.suites || [];
+     meta.suites.push({
+       name: suiteName, cases: [],
+       file: '',
+       parallel: false,
+       beforeAll: [],
+       afterAll: [],
+       beforeEach: [],
+       afterEach: []
+     });
+     await fs.writeFile(metaPath, JSON.stringify(meta, null, 2), 'utf8');
     return filePath;
   }
 );
@@ -205,6 +242,28 @@ ipcMain.handle('projects:getRoot', async () => {
   return ROOT_PROJECTS_DIR;
 });
 
+ipcMain.handle('meta:load', async (_evt, projectDir: string) => {
+  if (typeof projectDir !== 'string') {
+    throw new Error('NO_PROJECT_DIR');
+  }
+  const svc = new ProjectMetaService(projectDir);
+  return svc.load();
+});
+
+ipcMain.handle(
+  'meta:save',
+  async (_evt, projectDir: string, meta: any) => {
+    console.log('Saving meta:', projectDir, meta);
+    if (typeof projectDir !== 'string') {
+      throw new Error('NO_PROJECT_DIR');
+    }
+    const svc = new ProjectMetaService(projectDir);
+    await svc.save(meta);                              // writes JSON + specs
+    await generatePageObjects(projectDir, meta.pages); // writes page-objects folder
+    return;
+  }
+);
+
 app.whenReady().then(async () => {
   // 1) Make sure the folder is there
   await ensureProjectsDir();
@@ -221,3 +280,31 @@ app.whenReady().then(async () => {
 });
 
 app.on('window-all-closed', () => app.quit());
+
+async function generatePageObjects(
+  projectDir: string,
+  pages: Record<string, Record<string, string>>
+) {
+  const dir = path.join(projectDir, 'page-objects');
+  await fs.mkdir(dir, { recursive: true });
+
+  for (const [pageName, locators] of Object.entries(pages)) {
+    const className = `${pageName[0].toUpperCase() + pageName.slice(1)}Page`;
+    const lines = [
+      `import { Page } from '@playwright/test';`,
+      ``,
+      `export class ${className} {`,
+      `  constructor(public page: Page) {}`,
+    ];
+    for (const [locName, sel] of Object.entries(locators)) {
+      lines.push(
+        `  async ${locName}() {`,
+        `    return this.page.locator('${sel}');`,
+        `  }`
+      );
+    }
+    lines.push(`}`);
+    const filePath = path.join(dir, `${pageName}.ts`);
+    await fs.writeFile(filePath, lines.join('\n'), 'utf8');
+  }
+}

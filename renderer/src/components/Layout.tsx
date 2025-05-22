@@ -18,6 +18,14 @@ export default function Layout({ children }: { children: ReactNode }) {
           >
             Home
           </NavLink>
+          <NavLink
+            to="/meta"
+            className={({ isActive }) =>
+              isActive ? 'block font-semibold' : 'block text-gray-700'
+            }
+          >
+            Project Metadata
+          </NavLink>
           <NavLink to="/projects" className="block text-gray-700">
            My Projects
             </NavLink>
