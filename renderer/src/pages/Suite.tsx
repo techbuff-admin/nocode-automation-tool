@@ -121,6 +121,8 @@ import SuitePlayground from '../components/SuitePlayground';
 
 export default function Suite() {
   const { projectDir } = useContext(ProjectContext);
+  const projectName = projectDir?.split(/[\\/]/).pop() || 'Project';
+
   const navigate = useNavigate();
 
   // 0) redirect to /projects if no active project
@@ -142,8 +144,11 @@ export default function Suite() {
 
   return (
     <div className="p-6 space-y-6">
+        
       <h1 className="text-3xl font-bold">Automation Playground</h1>
-
+      <header className="px-6 py-4 border-b bg-gray-50">
+        <h2 className="text-2xl font-bold">Selected Project- {projectName}</h2>
+      </header>
       <ol className="flex space-x-4">
         {['App Config', 'Page Objects', 'Suites & Cases'].map((label, i) => (
           <li
@@ -157,18 +162,14 @@ export default function Suite() {
         ))}
       </ol>
 
-      <div className="border p-4 rounded-lg bg-white">
+      {/* <div className="border p-4 rounded-lg bg-white">
         {step === 1 && (<ApplicationConfig onNext={next} />)}
         {step === 2 && (<PageManager onNext={next} onBack={prev} />)}
-        {/* {step === 3 &&   <SuiteManager
-    projectDir={projectDir}
-    onRefresh={() => setTreeKey((k) => k + 1)}
-    onBack={prev}  // ← make sure this is provided
-  />} */}
-  {step === 3 && (
+      
+        {step === 3 && (
          <SuitePlayground onBack={prev} />
        )}
-      </div>
+      </div> */}
     </div>
   );
 }

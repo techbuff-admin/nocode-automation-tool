@@ -15,6 +15,7 @@ import Home from './pages/Home';
 import Generate from './pages/Generate';
 import Actions from './pages/Actions';
 import Suite from './pages/Suite';
+import Wizard from './components/Wizard'; 
 
 function AppRoutes() {
   const { token } = React.useContext(AuthContext);
@@ -37,7 +38,8 @@ function AppRoutes() {
         <Route path="/projects" element={<Projects />} />
         <Route path="/generate" element={<Generate />} />
         <Route path="/actions" element={<Actions />} />
-        <Route path="/suite" element={<Suite />} />
+        {/* <Route path="/suite" element={<Suite />} /> */}
+        <Route path="/suite" element={<Wizard />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Layout>

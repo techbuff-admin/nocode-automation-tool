@@ -26,7 +26,7 @@ contextBridge.exposeInMainWorld('api', {
   getRootProjectsDir: () => ipcRenderer.invoke('projects:getRoot'),
   loadMeta: (projectDir: string) =>
     ipcRenderer.invoke('meta:load', projectDir) as Promise<ProjectMeta>,
-  saveMeta: (projectDir: string, meta: ProjectMeta) =>
+  saveMeta: (projectDir: string, meta: any) =>
     ipcRenderer.invoke('meta:save', projectDir, meta),
  
 });

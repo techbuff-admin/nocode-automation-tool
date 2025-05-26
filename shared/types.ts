@@ -1,5 +1,22 @@
 import { Page } from "playwright";
 
+/** One entry in your “Page Objects” step */
+export interface PageObject {
+  /** Human-friendly name shown in the UI */
+  name: string;
+
+  /** 
+   * If you’re writing these out to disk, you can include a `file` property 
+   * (e.g. "login_page.po.ts"). Otherwise your generator can derive it.
+   */
+  file?: string;
+
+  /** 
+   * A map of logical names → CSS/XPath selectors 
+   * e.g. { usernameInput: '#user', submitBtn: 'button[type=submit]' } 
+   */
+  selectors: Record<string, string>;
+}
 // shared/types.ts
 export type Action =
   | { type: 'goto'; url: string }
@@ -35,7 +52,7 @@ export interface ProjectMeta {
     timeout: number;
     [key: string]: any;
   };
-  pages: Page[];
+  pages: PageObject[];
   suites: TestSuite[];
 }
 

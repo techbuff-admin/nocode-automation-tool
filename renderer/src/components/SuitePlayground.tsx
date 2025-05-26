@@ -91,7 +91,10 @@ export default function SuitePlayground({
     );
     const updated = { ...meta, suites: updatedSuites };
     await saveMeta(updated);
-    setSelectedCase(null);
+     // 3) re-select the (newly cloned) suite so it stays expanded
+    const reselected = updated.suites.find((s) => s.name === selectedSuite.name)!;
+    setSelectedSuite(reselected);
+  //  setSelectedCase(null);
   };
 
   // 5) Render

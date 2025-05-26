@@ -258,8 +258,9 @@ ipcMain.handle(
       throw new Error('NO_PROJECT_DIR');
     }
     const svc = new ProjectMetaService(projectDir);
+    //await generatePageObjects(projectDir, meta.pages); // writes page-objects folder
     await svc.save(meta);                              // writes JSON + specs
-    await generatePageObjects(projectDir, meta.pages); // writes page-objects folder
+    
     return;
   }
 );
