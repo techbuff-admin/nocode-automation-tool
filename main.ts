@@ -1,3 +1,4 @@
+import os from 'os';
 import { app, BrowserWindow, ipcMain, shell,dialog } from 'electron';
 import path from 'path';
 // main.ts (Electron main process)
@@ -7,9 +8,18 @@ const DEV_URL = 'http://localhost:5173';
 import fs from 'fs/promises';
 import util from 'util';
 import klaw from 'klaw';
+import { ProjectMeta } from './shared/types'; 
+import { ProjectMetaService } from './backend/ProjectMetaService';
 
 const execAsync = util.promisify(exec);
-
+const ROOT_PROJECTS_DIR = path.join(os.homedir(), 'nca-projects');
+async function ensureProjectsDir() {
+  try {
+    await fs.mkdir(ROOT_PROJECTS_DIR, { recursive: true });
+  } catch (err) {
+    console.error('Could not create projects root:', err);
+  }
+}
 ipcMain.handle('select-directory', async () => {
   const { canceled, filePaths } = await dialog.showOpenDialog({
     properties: ['openDirectory']
@@ -37,31 +47,6 @@ async function createWindow() {
   }
   mainWindow.webContents.openDevTools({ mode: 'detach' });
 }
-
-// ipcMain.handle('project:create', async (_evt, { basePath, projectName }) => {
-//   const projectDir = path.join(basePath, projectName);
-//   // 1) Make the folder
-//   await fs.mkdir(projectDir, { recursive: true });
-
-//   // 2) Initialize npm & install Playwright
-//   await execAsync('npm init -y', { cwd: projectDir });
-//   await execAsync('npm install -D @playwright/test playwright', { cwd: projectDir });
-
-//   // 3) Download the browsers
-//   await execAsync('npx playwright install', { cwd: projectDir });
-
-//   // 4) Write a basic test file so users see something
-//   const testCode = `
-// import { test, expect } from '@playwright/test';
-// test('example', async ({ page }) => {
-//   await page.goto('https://example.com');
-//   await expect(page).toHaveTitle(/Example Domain/);
-// });
-//   `.trim();
-//   await fs.writeFile(path.join(projectDir, 'tests/example.spec.ts'), testCode, 'utf8');
-
-//   return projectDir;
-// });
 
 ipcMain.handle('project:create', async (_evt, { basePath, projectName }) => {
   const projectDir = path.join(basePath, projectName);
@@ -91,7 +76,25 @@ export default defineConfig({
   reporter: [['list'], ['allure-playwright']],
 });`
   );
-
+ // 1) Write an initial metadata JSON
+ const initialMeta = {
+  name: projectName,
+  env: {
+    baseUrl: '',
+    timeout: 5000,
+    retries: 0,
+    headless: false,
+    elementWait: 0,
+  },
+  pages: [], // each page: { name, path, locators: [ { name, selector } ] }
+  suites:[],
+   // each suite: { name, path, cases: [ { name, path } ] }
+};
+await fs.writeFile(
+  path.join(projectDir, 'nca-config.json'),
+  JSON.stringify(initialMeta, null, 2),
+  'utf8'
+);
   return projectDir;
 });
 ipcMain.handle('tests:execute', (_, scriptPaths) =>
@@ -148,6 +151,8 @@ ipcMain.handle(
     // sanitize name → no spaces, lower-kebab
     const fileName = `${suiteName.trim().replace(/\s+/g, '-')}.spec.ts`;
     const filePath = path.join(projectDir, 'tests', fileName);
+      // ensure tests folder exists
+     await fs.mkdir(path.dirname(filePath), { recursive: true });
     const boilerplate = `
 import { test, expect } from '@playwright/test';
 
@@ -156,6 +161,21 @@ test.describe('${suiteName}', () => {
 });
     `.trim();
     await fs.writeFile(filePath, boilerplate, 'utf8');
+     // now load & update metadata JSON
+     const metaPath = path.join(projectDir, 'nca-config.json');
+     const raw = await fs.readFile(metaPath, 'utf8');
+     const meta: ProjectMeta = JSON.parse(raw);
+     meta.suites = meta.suites || [];
+     meta.suites.push({
+       name: suiteName, cases: [],
+       file: '',
+       parallel: false,
+       beforeAll: [],
+       afterAll: [],
+       beforeEach: [],
+       afterEach: []
+     });
+     await fs.writeFile(metaPath, JSON.stringify(meta, null, 2), 'utf8');
     return filePath;
   }
 );
@@ -180,10 +200,21 @@ ipcMain.handle(
   }
 );
 ipcMain.handle('fs:tree', async (_evt, projectDir: string) => {
-  const items: { path: string; type: 'file' | 'dir' }[] = [];
-  return new Promise(resolve => {
+  // if the folder is gone, just return empty
+  try {
+    await fs.stat(projectDir);
+  } catch (err: any) {
+    if (err.code === 'ENOENT') {
+      return [];    // ← rather than throwing, we send back an empty tree
+    }
+    throw err;      // real errors bubble
+  }
+
+  // otherwise walk the tree
+  return new Promise<{ path: string; type: 'file' | 'dir' }[]>((resolve, reject) => {
+    const items: { path: string; type: 'file' | 'dir' }[] = [];
     klaw(projectDir)
-      .on('data', item => {
+      .on('data', (item) => {
         const rel = path.relative(projectDir, item.path);
         if (rel) {
           items.push({
@@ -192,8 +223,104 @@ ipcMain.handle('fs:tree', async (_evt, projectDir: string) => {
           });
         }
       })
-      .on('end', () => resolve(items));
+      .on('end', () => resolve(items))
+      .on('error', (e) => reject(e));
   });
 });
-app.whenReady().then(createWindow);
+// IPC handler to list all sub-folders under ROOT_PROJECTS_DIR
+ipcMain.handle('projects:list', async () => {
+  const entries = await fs.readdir(ROOT_PROJECTS_DIR, { withFileTypes: true });
+  return entries
+    .filter((d) => d.isDirectory())
+    .map((d) => ({
+      name: d.name,
+      path: path.join(ROOT_PROJECTS_DIR, d.name),
+    }));
+});
+// IPC handler to return the root path itself (so the UI can tell the user)
+ipcMain.handle('projects:getRoot', async () => {
+  return ROOT_PROJECTS_DIR;
+});
+
+ipcMain.handle('meta:load', async (_evt, projectDir: string) => {
+  if (typeof projectDir !== 'string') {
+    throw new Error('NO_PROJECT_DIR');
+  }
+  const svc = new ProjectMetaService(projectDir);
+  return svc.load();
+});
+
+ipcMain.handle(
+  'meta:save',
+  async (_evt, projectDir: string, meta: any) => {
+    console.log('Saving meta:', projectDir, meta);
+    if (typeof projectDir !== 'string') {
+      throw new Error('NO_PROJECT_DIR');
+    }
+    const svc = new ProjectMetaService(projectDir);
+    //await generatePageObjects(projectDir, meta.pages); // writes page-objects folder
+    await svc.save(meta);                              // writes JSON + specs
+    
+    return;
+  }
+);
+// ← new:
+ipcMain.handle('path-exists', async (_evt, fullPath: string) => {
+  try {
+    await fs.access(fullPath);
+    return true;
+  } catch {
+    return false;
+  }
+});
+
+ipcMain.handle('delete-path', async (_evt, fullPath: string) => {
+  // recursive + force in case it’s a non-empty dir
+  await fs.rm(fullPath, { recursive: true, force: true });
+  return;
+});
+
+app.whenReady().then(async () => {
+  // 1) Make sure the folder is there
+  await ensureProjectsDir();
+
+  // 2) Now spin up your window
+  createWindow();
+
+  // 3) On macOS re-open behavior
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createWindow();
+    }
+  });
+});
+
 app.on('window-all-closed', () => app.quit());
+
+async function generatePageObjects(
+  projectDir: string,
+  pages: Record<string, Record<string, string>>
+) {
+  const dir = path.join(projectDir, 'page-objects');
+  await fs.mkdir(dir, { recursive: true });
+
+  for (const [pageName, locators] of Object.entries(pages)) {
+    const className = `${pageName[0].toUpperCase() + pageName.slice(1)}Page`;
+    const lines = [
+      `import { Page } from '@playwright/test';`,
+      ``,
+      `export class ${className} {`,
+      `  constructor(public page: Page) {}`,
+    ];
+    for (const [locName, sel] of Object.entries(locators)) {
+      lines.push(
+        `  async ${locName}() {`,
+        `    return this.page.locator('${sel}');`,
+        `  }`
+      );
+    }
+    lines.push(`}`);
+    const filePath = path.join(dir, `${pageName}.ts`);
+    await fs.writeFile(filePath, lines.join('\n'), 'utf8');
+  }
+}

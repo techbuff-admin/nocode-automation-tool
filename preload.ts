@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer, shell } from 'electron';
+import { ProjectMeta } from './shared/types';
 
 // Expose safe APIs to renderer
 contextBridge.exposeInMainWorld('api', {
@@ -20,6 +21,16 @@ contextBridge.exposeInMainWorld('api', {
     caseCode: string;
   }) => ipcRenderer.invoke('case:add', opts),
   getFileTree: (projectDir: string) =>
-    ipcRenderer.invoke('fs:tree', projectDir),
+  ipcRenderer.invoke('fs:tree', projectDir),
+  listProjects: () => ipcRenderer.invoke('projects:list'),
+  getRootProjectsDir: () => ipcRenderer.invoke('projects:getRoot'),
+  loadMeta: (projectDir: string) =>
+    ipcRenderer.invoke('meta:load', projectDir) as Promise<ProjectMeta>,
+  saveMeta: (projectDir: string, meta: any) =>
+    ipcRenderer.invoke('meta:save', projectDir, meta),
+  // ← new:
+  pathExists:   (p: string) => ipcRenderer.invoke('path-exists', p),
+  deletePath:   (p: string) => ipcRenderer.invoke('delete-path', p),
+ 
 });
 

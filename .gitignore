@@ -1,6 +1,5 @@
 /node_modules/
 package-lock.json
-tsconfig.json
 yarn-error.log
 /dist/
 .vscode
@@ -20,10 +19,8 @@ yarn-error.log
 /renderer/*.log
 /renderer/*.swp
 /renderer/*.swo
-/renderer/tsconfig.json
 /renderer/yarn-error.log
 /renderer/.env
 /renderer/.env.local
 /renderer/.env.development
 /renderer/.env.production
-node_modules

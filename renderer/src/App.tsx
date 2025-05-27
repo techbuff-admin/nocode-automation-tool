@@ -7,12 +7,15 @@ import Layout from './components/Layout';
 import { ChatProvider } from './context/ChatContext';
 import { ProjectProvider } from './context/ProjectContext';
 import ProjectSetup from './pages/ProjectSetup';
+import Projects from './pages/Projects';
+import MetaEditor from './components/MetaEditor';
 
 // import page components
 import Home from './pages/Home';
 import Generate from './pages/Generate';
 import Actions from './pages/Actions';
 import Suite from './pages/Suite';
+import Wizard from './components/Wizard'; 
 
 function AppRoutes() {
   const { token } = React.useContext(AuthContext);
@@ -30,10 +33,13 @@ function AppRoutes() {
     <Layout>
       <Routes>
         <Route path="/" element={<Home />} />
+        <Route path="/meta" element={<MetaEditor />} />
         <Route path="/project-setup" element={<ProjectSetup />} />
+        <Route path="/projects" element={<Projects />} />
         <Route path="/generate" element={<Generate />} />
         <Route path="/actions" element={<Actions />} />
-        <Route path="/suite" element={<Suite />} />
+        {/* <Route path="/suite" element={<Suite />} /> */}
+        <Route path="/suite" element={<Wizard />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Layout>
