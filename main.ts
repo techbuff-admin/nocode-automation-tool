@@ -264,6 +264,21 @@ ipcMain.handle(
     return;
   }
 );
+// ← new:
+ipcMain.handle('path-exists', async (_evt, fullPath: string) => {
+  try {
+    await fs.access(fullPath);
+    return true;
+  } catch {
+    return false;
+  }
+});
+
+ipcMain.handle('delete-path', async (_evt, fullPath: string) => {
+  // recursive + force in case it’s a non-empty dir
+  await fs.rm(fullPath, { recursive: true, force: true });
+  return;
+});
 
 app.whenReady().then(async () => {
   // 1) Make sure the folder is there

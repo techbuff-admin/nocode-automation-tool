@@ -25,6 +25,19 @@ export default function ProjectSetup() {
   // 2) Handler to scaffold the new project under basePath
   const handleCreate = async () => {
     if (!basePath || !projectName.trim()) return;
+       // ← new: duplicate‐project check
+   const name = projectName.trim();
+   const fullPath = `${basePath}/${name}`;
+   const exists = await window.api.pathExists(fullPath);
+   if (exists) {
+     const ok = confirm(
+       `Project with the same name already exists. Would you like to replace it?`
+     );
+     if (!ok) return;
+     // ← new: remove the old directory so we can recreate
+     const fullPath = basePath + "/" + projectName
+     await window.api.deletePath(fullPath);
+   }  
     setStatus('creating');
     setError('');
     try {

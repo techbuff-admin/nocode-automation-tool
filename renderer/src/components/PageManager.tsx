@@ -53,6 +53,23 @@ export default function PageManager({
   const addPage = () => {
     const name = newPage.trim();
     if (!name || pagesArr.some((p) => p.name === name)) return;
+      // ← new: duplicate‐page check
+   const exists = pagesArr.some(p => p.name === name);
+   if (exists) {
+     const ok = confirm(
+       `Page with the same name already exists. Would you like to replace it?`
+     );
+     if (!ok) return;
+     // replace old entry
+     onPagesChange(
+       pagesArr
+         .filter(p => p.name !== name)
+         .concat({ name, selectors: {}, file: undefined })
+     );
+     setCurrentPage(name);
+     setNewPage('');
+     return;
+  }
     onPagesChange([...pagesArr, { name, selectors: {}, file: undefined }]);
     setCurrentPage(name);
     setNewPage('');
@@ -63,6 +80,15 @@ export default function PageManager({
     const key = newLocator.name.trim();
     if (!key) return;
     const val = newLocator.selector;
+       // ← new: duplicate‐locator check
+   const pageObj = pagesArr.find(p => p.name === currentPage)!;
+   if (pageObj.selectors[key] !== undefined) {
+     const ok = confirm(
+       `Locator with the same name already exists. Would you like to replace it?`
+     );
+     if (!ok) return;
+     // else we’ll simply overwrite it below
+   }
     onPagesChange(
       pagesArr.map((p) =>
         p.name === currentPage

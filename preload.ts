@@ -28,6 +28,9 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('meta:load', projectDir) as Promise<ProjectMeta>,
   saveMeta: (projectDir: string, meta: any) =>
     ipcRenderer.invoke('meta:save', projectDir, meta),
+  // ← new:
+  pathExists:   (p: string) => ipcRenderer.invoke('path-exists', p),
+  deletePath:   (p: string) => ipcRenderer.invoke('delete-path', p),
  
 });
 
