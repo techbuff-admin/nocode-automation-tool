@@ -345,7 +345,8 @@ export default function SuitePlayground({ onBack }: { onBack: () => void }) {
               projectDir={projectDir!}
               suiteName={selectedSuite!.name}
               caseName={selectedCase.name}
-              onMetaChange={setMeta}
+              meta={meta!}  
+              onMetaChange={saveMeta}
             />
           </div>
         ) : selectedSuite ? (
