@@ -39,6 +39,12 @@ export interface TestSuite {
   file: string;
   cases: TestCase[];
   parallel: boolean;
+  hooks?: {
+    beforeAll?: Action[];
+    beforeEach?: Action[];
+    afterEach?: Action[];
+    afterAll?: Action[];
+  };
   beforeAll: Action[];
   afterAll: Action[];
   beforeEach: Action[];
