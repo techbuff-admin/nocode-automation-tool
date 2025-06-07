@@ -58,6 +58,7 @@ contextBridge.exposeInMainWorld('api', {
         browsers                  // ← new
       ),
       
- 
+      generateReport: (dir: string) => ipcRenderer.invoke('generateReport', dir),
+      clearReports:   (dir: string) => ipcRenderer.invoke('clearReports', dir),
 });
 

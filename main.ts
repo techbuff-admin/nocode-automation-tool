@@ -13,6 +13,7 @@ import klaw from 'klaw';
 import { ProjectMeta } from './shared/types'; 
 import { ProjectMetaService } from './backend/ProjectMetaService';
 
+
 const execAsync = util.promisify(exec);
 const ROOT_PROJECTS_DIR = path.join(os.homedir(), 'nca-projects');
 async function ensureProjectsDir() {
@@ -75,7 +76,9 @@ ipcMain.handle('project:create', async (_evt, { basePath, projectName }) => {
 
 export default defineConfig({
   testDir: './tests',
-  reporter: [['list'], ['allure-playwright']],
+  reporter: [['list'], ['allure-playwright',{
+        resultsDir: "allure-results",
+      },]],
 });`
   );
  // 1) Write an initial metadata JSON
@@ -282,29 +285,7 @@ ipcMain.handle('delete-path', async (_evt, fullPath: string) => {
   return;
 });
 
-// Run an entire suite
-// ipcMain.handle(
-//   'run:suite',
-//   async (_evt, projectDir: string, suiteName: string) => {
-//     const spec = findSpecFile(projectDir, suiteName);
-//     const { passed, output } = await runPlaywright(projectDir, [spec]);
-//     return { passed, output };
-//   }
-// );
 
-// // Run a single test case via grep
-// ipcMain.handle(
-//   'run:testcase',
-//   async (_evt, projectDir: string, suiteName: string, caseName: string) => {
-//     const spec = findSpecFile(projectDir, suiteName);
-//     const { passed, output } = await runPlaywright(projectDir, [
-//       spec,
-//       `--grep=${caseName}`,
-//       '--reporter=list',
-//     ]);
-//     return { passed, output };
-//   }
-// );  
 
 ipcMain.handle(
   'run:suite',
@@ -322,7 +303,7 @@ ipcMain.handle(
         const { browser, channel } = normalizeBrowserFlags(name);
         const args = [
           spec,
-          '--reporter=list',
+          '--reporter=list,allure-playwright',
           `--browser=${browser}`,         // e.g. chromium|firefox|webkit|all
         ];
         if (channel) args.push(`--channel=${channel}`); // for edge
@@ -358,7 +339,7 @@ ipcMain.handle(
         const args = [
           spec,
           `--grep=${caseName}`,
-          '--reporter=list',
+          '--reporter=list,allure-playwright',
           `--browser=${browser}`,
         ];
         if (channel) args.push(`--channel=${channel}`);
@@ -375,6 +356,36 @@ ipcMain.handle(
     return { passed, output };
   }
 );
+
+
+// ← new: generate & open Allure report in browser
+ipcMain.handle('generateReport', async (_evt, projectDir: string) => {
+  const resultsDir = path.join(projectDir, 'allure-results');
+  const reportDir  = path.join(projectDir, 'allure-report');
+
+  // 1) regenerate the report
+  await execAsync(
+    `npx allure generate "${resultsDir}" --clean -o "${reportDir}"`,
+    { cwd: projectDir }
+  );
+
+  // 2) open it in the browser
+  await execAsync(
+    `npx allure open "${reportDir}"`,
+    { cwd: projectDir }
+  );
+});
+// ← new: clear both folders
+ipcMain.handle(
+  'clearReports',
+  async (_evt, projectDir: string) => {
+    const resultsDir = path.join(projectDir, 'allure-results');
+    const reportDir  = path.join(projectDir, 'allure-report');
+    await fs.rm(resultsDir, { recursive: true, force: true });
+    await fs.rm(reportDir,  { recursive: true, force: true });
+  }
+);
+
 
 
 app.whenReady().then(async () => {
