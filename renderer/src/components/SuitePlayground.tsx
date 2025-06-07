@@ -6,33 +6,50 @@ import {
   PlusCircleIcon,
   PencilIcon,
   TrashIcon,
+  PlayIcon,
 } from '@heroicons/react/24/outline';
 import TestCaseBuilder from './TestCaseBuilder';
 import HookBuilder from './HookBuilder';
 
 type HookName = 'beforeAll' | 'beforeEach' | 'afterEach' | 'afterAll';
+type RunState = 'idle' | 'running' | 'passed' | 'failed';
 
 export default function SuitePlayground({ onBack }: { onBack: () => void }) {
   const { projectDir } = useContext(ProjectContext);
 
-  // --- State ---
+  // --- Metadata + Selection State ---
   const [meta, setMeta] = useState<ProjectMeta | null>(null);
   const [selectedSuite, setSelectedSuite] = useState<TestSuite | null>(null);
   const [selectedCase, setSelectedCase] = useState<TestCase | null>(null);
   const [editingHook, setEditingHook] = useState<HookName | null>(null);
 
-  // Inline‐edit state
+  // --- Inline-edit State ---
   const [editingSuite, setEditingSuite] = useState<string | null>(null);
   const [editingSuiteName, setEditingSuiteName] = useState('');
   const [editingCase, setEditingCase] = useState<string | null>(null);
   const [editingCaseName, setEditingCaseName] = useState('');
 
+  // --- Creation Flags ---
   const [creatingSuite, setCreatingSuite] = useState(false);
   const [newSuiteName, setNewSuiteName] = useState('');
   const [creatingCase, setCreatingCase] = useState(false);
   const [newCaseName, setNewCaseName] = useState('');
 
-  // Load on mount
+  // ← new: headless toggle
+  const [runHeadless, setRunHeadless] = useState<boolean>(true);
+  // ← new: browser selections
+  const [runBrowsers, setRunBrowsers] = useState({
+    chrome: true,
+    firefox: false,
+    safari: false,
+    edge: false,
+  });
+
+  // ← new: track pass/fail
+  const [suiteStatus, setSuiteStatus] = useState<Record<string, RunState>>({});
+  const [caseStatus, setCaseStatus] = useState<Record<string, RunState>>({});
+
+  // Load meta
   useEffect(() => {
     if (!projectDir) return;
     window.api.loadMeta(projectDir).then(m => {
@@ -41,7 +58,7 @@ export default function SuitePlayground({ onBack }: { onBack: () => void }) {
     });
   }, [projectDir]);
 
-  // Save & re‐select to keep sidebar open
+  // Save & keep selection
   const saveMeta = async (updated: ProjectMeta) => {
     setMeta(updated);
     if (selectedSuite) {
@@ -55,16 +72,13 @@ export default function SuitePlayground({ onBack }: { onBack: () => void }) {
     await window.api.saveMeta(projectDir!, updated);
   };
 
-  // --- Suite CRUD ---
+  // Suite CRUD
   const addSuite = async () => {
     if (!newSuiteName.trim() || !meta) return;
     const name = newSuiteName.trim();
-    // duplicate‐suite check
-    const exists = meta.suites.some(s => s.name === name);
-    if (exists) {
-      if (!confirm(`Suite "${name}" already exists. Replace it?`)) return;
-      meta.suites = meta.suites.filter(s => s.name !== name);
-    }
+    const dup = meta.suites.some(s => s.name === name);
+    if (dup && !confirm(`Suite "${name}" exists. Replace it?`)) return;
+    if (dup) meta.suites = meta.suites.filter(s => s.name !== name);
     setCreatingSuite(true);
     const s: TestSuite = { name, cases: [], hooks: {} };
     await saveMeta({ ...meta, suites: [...meta.suites, s] });
@@ -80,16 +94,13 @@ export default function SuitePlayground({ onBack }: { onBack: () => void }) {
     setEditingHook(null);
   };
 
-  // --- Case CRUD ---
+  // Case CRUD
   const addCase = async () => {
     if (!selectedSuite || !newCaseName.trim() || !meta) return;
     const name = newCaseName.trim();
-    // duplicate‐case
-    const caseExists = selectedSuite.cases.some(c => c.name === name);
-    if (caseExists) {
-      if (!confirm(`Test case "${name}" already exists. Replace it?`)) return;
-      selectedSuite.cases = selectedSuite.cases.filter(c => c.name !== name);
-    }
+    const dup = selectedSuite.cases.some(c => c.name === name);
+    if (dup && !confirm(`Case "${name}" exists. Replace it?`)) return;
+    if (dup) selectedSuite.cases = selectedSuite.cases.filter(c => c.name !== name);
     setCreatingCase(true);
     const updated = {
       ...meta,
@@ -102,7 +113,7 @@ export default function SuitePlayground({ onBack }: { onBack: () => void }) {
     await saveMeta(updated);
     const su = updated.suites.find(s => s.name === selectedSuite.name)!;
     setSelectedSuite(su);
-    setSelectedCase(su.cases[su.cases.length - 1]);
+    setSelectedCase(su.cases.at(-1)!);
     setNewCaseName('');
     setCreatingCase(false);
   };
@@ -122,13 +133,56 @@ export default function SuitePlayground({ onBack }: { onBack: () => void }) {
     setSelectedCase(null);
   };
 
-  if (!meta) return <p>Loading test suites…</p>;
+  // ← new: run suite across selected browsers
+  const runSuite = async (suite: TestSuite) => {
+    if (!projectDir) return;
+    const browsers = Object.entries(runBrowsers)
+      .filter(([, v]) => v)
+      .map(([k]) => k);
+    setSuiteStatus(s => ({ ...s, [suite.name]: 'running' }));
+    try {
+      const { passed, output } = await window.api.runSuite(
+        projectDir,
+        suite.name,
+        runHeadless,
+        browsers
+      );
+      setSuiteStatus(s => ({ ...s, [suite.name]: passed ? 'passed' : 'failed' }));
+      console.log(output);
+    } catch {
+      setSuiteStatus(s => ({ ...s, [suite.name]: 'failed' }));
+    }
+  };
+
+  // ← new: run single case
+  const runCase = async (suite: TestSuite, testCase: TestCase) => {
+    if (!projectDir) return;
+    const key = `${suite.name}::${testCase.name}`;
+    const browsers = Object.entries(runBrowsers)
+      .filter(([, v]) => v)
+      .map(([k]) => k);
+    setCaseStatus(c => ({ ...c, [key]: 'running' }));
+    try {
+      const { passed, output } = await window.api.runTestCase(
+        projectDir,
+        suite.name,
+        testCase.name,
+        runHeadless,
+        browsers
+      );
+      setCaseStatus(c => ({ ...c, [key]: passed ? 'passed' : 'failed' }));
+      console.log(output);
+    } catch {
+      setCaseStatus(c => ({ ...c, [key]: 'failed' }));
+    }
+  };
+
+  if (!meta) return <p>Loading…</p>;
 
   return (
     <div className="flex h-full">
-      {/* --- Sidebar --- */}
+      {/* === Left Sidebar === */}
       <aside className="w-64 border-r p-4 overflow-auto space-y-6">
-        {/* Add Suite */}
         <div>
           <h3 className="font-semibold mb-2">Test Suites</h3>
           <div className="flex space-x-2">
@@ -150,12 +204,9 @@ export default function SuitePlayground({ onBack }: { onBack: () => void }) {
 
         <ul className="space-y-2">
           {meta.suites.map(s => {
-            const hooks = s.hooks || {};
             const isSel = selectedSuite === s;
-
             return (
               <li key={s.name}>
-                {/* Suite row w/ inline‐edit */}
                 <div
                   className={`flex items-center justify-between p-1 rounded cursor-pointer ${
                     isSel ? 'bg-blue-100 font-bold' : 'hover:bg-gray-50'
@@ -172,30 +223,29 @@ export default function SuitePlayground({ onBack }: { onBack: () => void }) {
                       value={editingSuiteName}
                       onChange={e => setEditingSuiteName(e.target.value)}
                       onBlur={async () => {
-                        const newName = editingSuiteName.trim();
-                        if (newName && newName !== s.name && meta) {
-                          const dup = meta.suites.some(su => su.name === newName);
-                          if (dup) {
-                            if (!confirm(`Suite "${newName}" already exists. Replace it?`)) {
-                              setEditingSuite(null);
-                              return;
-                            }
-                            meta.suites = meta.suites.filter(su => su.name !== newName);
+                        const nn = editingSuiteName.trim();
+                        if (nn && nn !== s.name && meta) {
+                          const dup = meta.suites.some(x => x.name === nn);
+                          if (dup && !confirm(`Replace "${nn}"?`)) {
+                            setEditingSuite(null);
+                            return;
                           }
                           const updated = {
                             ...meta,
-                            suites: meta.suites.map(su =>
-                              su.name === s.name ? { ...su, name: newName } : su
+                            suites: meta.suites.map(x =>
+                              x.name === s.name ? { ...x, name: nn } : x
                             ),
                           };
                           await saveMeta(updated);
                           setSelectedSuite(
-                            updated.suites.find(su => su.name === newName) || null
+                            updated.suites.find(x => x.name === nn)!
                           );
                         }
                         setEditingSuite(null);
                       }}
-                      onKeyDown={e => e.key === 'Enter' && e.currentTarget.blur()}
+                      onKeyDown={e =>
+                        e.key === 'Enter' && e.currentTarget.blur()
+                      }
                       autoFocus
                     />
                   ) : (
@@ -225,201 +275,197 @@ export default function SuitePlayground({ onBack }: { onBack: () => void }) {
                   </div>
                 </div>
 
-                {/* ← new: Hooks list with delete */}
                 {isSel && (
-                  <ul className="ml-4 mt-2 space-y-1">
-                    {(['beforeAll','beforeEach','afterEach','afterAll'] as HookName[]).map(
-                      hook => {
-                        const exists = Array.isArray(hooks[hook]) && hooks[hook]!.length > 0;
-                        return exists ? (
-                          <li
-                            key={hook}
-                            className="flex items-center justify-between p-1 rounded bg-gray-50 hover:bg-gray-100"
-                          >
-                            <button
-                              className="flex-1 text-left"
-                              onClick={() => setEditingHook(hook)}
+                  <>
+                    {/* Hooks */}
+                    <ul className="ml-4 mt-2 space-y-1">
+                      {(['beforeAll','beforeEach','afterEach','afterAll'] as HookName[]).map(
+                        hook => {
+                          const exists =
+                            Array.isArray(s.hooks?.[hook]) &&
+                            s.hooks![hook]!.length > 0;
+                          return exists ? (
+                            <li
+                              key={hook}
+                              className="flex items-center justify-between p-1 bg-gray-50 hover:bg-gray-100"
                             >
-                              {hook}
-                            </button>
-                            <button
-                              onClick={() => {
-                                if (
-                                  !confirm(
-                                    `Delete hook "${hook}" and its actions?`
+                              <button
+                                className="flex-1 text-left"
+                                onClick={() => setEditingHook(hook)}
+                              >
+                                {hook}
+                              </button>
+                              <button
+                                onClick={() => {
+                                  if (
+                                    !confirm(
+                                      `Delete hook "${hook}"?`
+                                    )
                                   )
-                                )
-                                  return;
-                                // remove hook entirely
-                                const updatedSuite: TestSuite = {
-                                  ...s,
-                                  hooks: { ...hooks },
-                                };
-                                delete updatedSuite.hooks![hook];
-                                const updated = {
-                                  ...meta,
-                                  suites: meta.suites.map(su =>
-                                    su.name === s.name ? updatedSuite : su
-                                  ),
-                                };
-                                saveMeta(updated);
-                                setEditingHook(null);
-                              }}
-                            >
-                              <TrashIcon className="h-4 w-4 text-red-600" />
-                            </button>
-                          </li>
-                        ) : (
-                          <li key={hook} className="p-1">
-                            <button
-                              className="text-green-600 hover:underline"
-                              onClick={() => {
-                                const updatedSuite: TestSuite = {
-                                  ...s,
-                                  hooks: { ...hooks, [hook]: [] },
-                                };
-                                const updated = {
-                                  ...meta,
-                                  suites: meta.suites.map(su =>
-                                    su.name === s.name ? updatedSuite : su
-                                  ),
-                                };
-                                saveMeta(updated).then(() =>
-                                  setEditingHook(hook)
-                                );
-                              }}
-                            >
-                              + Add {hook}
-                            </button>
-                          </li>
-                        );
-                      }
-                    )}
-                  </ul>
-                )}
+                                    return;
+                                  const updatedSuite: TestSuite = {
+                                    ...s,
+                                    hooks: { ...s.hooks },
+                                  };
+                                  delete updatedSuite.hooks![hook];
+                                  saveMeta({
+                                    ...meta,
+                                    suites: meta.suites.map(x =>
+                                      x.name === s.name ? updatedSuite : x
+                                    ),
+                                  });
+                                  setEditingHook(null);
+                                }}
+                              >
+                                <TrashIcon className="h-4 w-4 text-red-600" />
+                              </button>
+                            </li>
+                          ) : (
+                            <li key={hook} className="p-1">
+                              <button
+                                className="text-green-600 hover:underline"
+                                onClick={() => {
+                                  const updatedSuite: TestSuite = {
+                                    ...s,
+                                    hooks: { ...s.hooks, [hook]: [] },
+                                  };
+                                  saveMeta({
+                                    ...meta,
+                                    suites: meta.suites.map(x =>
+                                      x.name === s.name ? updatedSuite : x
+                                    ),
+                                  }).then(() => setEditingHook(hook));
+                                }}
+                              >
+                                + Add {hook}
+                              </button>
+                            </li>
+                          );
+                        }
+                      )}
+                    </ul>
 
-                {/* Cases list */}
-                {isSel && (
-                  <ul className="mt-1 ml-4 space-y-1">
-                    {s.cases.map(c => {
-                      const isCaseSel = selectedCase === c;
-                      return (
-                        <li
-                          key={c.name}
-                          className={`flex justify-between items-center p-1 rounded cursor-pointer ${
-                            isCaseSel ? 'bg-blue-200' : 'hover:bg-gray-50'
-                          }`}
-                          onClick={() => {
-                            setSelectedCase(c);
-                            setEditingHook(null);
-                          }}
-                        >
-                          {editingCase === c.name ? (
-                            <input
-                              className="border rounded px-1 py-0 flex-1"
-                              value={editingCaseName}
-                              onChange={e => setEditingCaseName(e.target.value)}
-                              onBlur={async () => {
-                                const newName = editingCaseName.trim();
-                                if (
-                                  newName &&
-                                  newName !== c.name &&
-                                  selectedSuite &&
-                                  meta
-                                ) {
-                                  const dup = selectedSuite.cases.some(
-                                    tc => tc.name === newName
-                                  );
-                                  if (dup) {
+                    {/* Cases */}
+                    <ul className="mt-1 ml-4 space-y-1">
+                      {s.cases.map(c => {
+                        const isCaseSel = selectedCase === c;
+                        const key = `${s.name}::${c.name}`;
+                        const cs = caseStatus[key] || 'idle';
+                        return (
+                          <li
+                            key={c.name}
+                            className={`flex justify-between items-center p-1 rounded cursor-pointer ${
+                              isCaseSel ? 'bg-blue-200' : 'hover:bg-gray-50'
+                            }`}
+                            onClick={() => {
+                              setSelectedCase(c);
+                              setEditingHook(null);
+                            }}
+                          >
+                            {editingCase === c.name ? (
+                              <input
+                                className="border rounded px-1 py-0 flex-1"
+                                value={editingCaseName}
+                                onChange={e => setEditingCaseName(e.target.value)}
+                                onBlur={async () => {
+                                  const nn = editingCaseName.trim();
+                                  if (
+                                    nn &&
+                                    nn !== c.name &&
+                                    selectedSuite &&
+                                    meta
+                                  ) {
+                                    const dup = selectedSuite.cases.some(
+                                      x => x.name === nn
+                                    );
                                     if (
-                                      !confirm(
-                                        `Test case "${newName}" already exists. Replace it?`
-                                      )
+                                      dup &&
+                                      !confirm(`Replace "${nn}"?`)
                                     ) {
                                       setEditingCase(null);
                                       return;
                                     }
-                                    selectedSuite.cases = selectedSuite.cases.filter(
-                                      tc => tc.name !== newName
+                                    const updatedSuite: TestSuite = {
+                                      ...selectedSuite,
+                                      cases: selectedSuite.cases.map(x =>
+                                        x.name === c.name
+                                          ? { ...x, name: nn }
+                                          : x
+                                      ),
+                                    };
+                                    const updated: ProjectMeta = {
+                                      ...meta,
+                                      suites: meta.suites.map(x =>
+                                        x.name === selectedSuite.name
+                                          ? updatedSuite
+                                          : x
+                                      ),
+                                    };
+                                    await saveMeta(updated);
+                                    setSelectedCase(
+                                      updatedSuite.cases.find(
+                                        x => x.name === nn
+                                      ) || null
                                     );
                                   }
-                                  const updatedSuite: TestSuite = {
-                                    ...selectedSuite,
-                                    cases: selectedSuite.cases.map(tc =>
-                                      tc.name === c.name
-                                        ? { ...tc, name: newName }
-                                        : tc
-                                    ),
-                                  };
-                                  const updated = {
-                                    ...meta,
-                                    suites: meta.suites.map(su =>
-                                      su.name === selectedSuite.name
-                                        ? updatedSuite
-                                        : su
-                                    ),
-                                  };
-                                  await saveMeta(updated);
-                                  setSelectedCase(
-                                    updatedSuite.cases.find(
-                                      tc => tc.name === newName
-                                    ) || null
-                                  );
+                                  setEditingCase(null);
+                                }}
+                                onKeyDown={e =>
+                                  e.key === 'Enter' &&
+                                  e.currentTarget.blur()
                                 }
-                                setEditingCase(null);
-                              }}
-                              onKeyDown={e =>
-                                e.key === 'Enter' && (e.currentTarget.blur())
-                              }
-                              autoFocus
-                            />
-                          ) : (
-                            <span className="flex-1">📝 {c.name}</span>
-                          )}
+                                autoFocus
+                              />
+                            ) : (
+                              <span className="flex-1">📝 {c.name}</span>
+                            )}
 
-                          <div className="flex space-x-1">
-                            {editingCase !== c.name && (
+                            <div className="flex space-x-1">
+                              {editingCase !== c.name && (
+                                <button
+                                  onClick={e => {
+                                    e.stopPropagation();
+                                    setEditingCase(c.name);
+                                    setEditingCaseName(c.name);
+                                  }}
+                                >
+                                  <PencilIcon className="h-4 w-4 text-blue-600" />
+                                </button>
+                              )}
+                              {/* ← fixed: properly close the delete‐button */}
                               <button
                                 onClick={e => {
-                                  e.stopPropagation();
-                                  setEditingCase(c.name);
-                                  setEditingCaseName(c.name);
+                                  e.stopPropagation(); 
+                                  deleteCase(c.name);
                                 }}
                               >
-                                <PencilIcon className="h-4 w-4 text-blue-600" />
+                                <TrashIcon className="h-4 w-4 text-red-600" />
                               </button>
-                            )}
-                            <button
-                              onClick={e => {
-                                e.stopPropagation();
-                                deleteCase(c.name);
-                              }}
-                            >
-                              <TrashIcon className="h-4 w-4 text-red-600" />
-                            </button>
-                          </div>
-                        </li>
-                      );
-                    })}
-                    {/* Add Case */}
-                    <li>
-                      <div className="flex space-x-2">
-                        <input
-                          className="flex-1 border rounded px-2 py-1"
-                          placeholder="+ Case name"
-                          value={newCaseName}
-                          onChange={e => setNewCaseName(e.target.value)}
-                        />
-                        <button
-                          onClick={addCase}
-                          disabled={creatingCase}
-                          className="p-1 hover:bg-gray-100"
-                        >
-                          <PlusCircleIcon className="h-5 w-5 text-green-600" />
-                        </button>
-                      </div>
-                    </li>
-                  </ul>
+                            </div>
+                          </li>
+                        );
+                      })}
+
+                      {/* Add new case */}
+                      <li>
+                        <div className="flex space-x-2">
+                          <input
+                            className="flex-1 border rounded px-2 py-1"
+                            placeholder="+ Case name"
+                            value={newCaseName}
+                            onChange={e => setNewCaseName(e.target.value)}
+                          />
+                          <button
+                            onClick={addCase}
+                            disabled={creatingCase}
+                            className="p-1 hover:bg-gray-100"
+                          >
+                            <PlusCircleIcon className="h-5 w-5 text-green-600" />
+                          </button>
+                        </div>
+                      </li>
+                    </ul>
+                  </>
                 )}
               </li>
             );
@@ -434,7 +480,7 @@ export default function SuitePlayground({ onBack }: { onBack: () => void }) {
         </button>
       </aside>
 
-      {/* Right pane */}
+      {/* === Right Pane === */}
       <main className="flex-1 p-4 overflow-auto bg-white rounded-lg">
         {selectedSuite ? (
           editingHook ? (
@@ -446,10 +492,64 @@ export default function SuitePlayground({ onBack }: { onBack: () => void }) {
               onMetaChange={saveMeta}
             />
           ) : selectedCase ? (
+            /* --- CASE SELECTED: run options + builder --- */
             <div>
-              <h3 className="text-xl font-semibold mb-4">
-                Steps for “{selectedCase.name}”
-              </h3>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-xl font-semibold">
+                  Steps for “{selectedCase.name}”
+                </h3>
+
+                {/* ← new: run settings */}
+                <div className="flex items-center space-x-4">
+                  <label className="flex items-center text-sm">
+                    <input
+                      type="checkbox"
+                      checked={runHeadless}
+                      onChange={e => setRunHeadless(e.target.checked)}
+                      className="mr-1"
+                    />
+                    Headless
+                  </label>
+                  {(['chrome','firefox','safari','edge'] as const).map(br => (
+                    <label key={br} className="flex items-center text-sm">
+                      <input
+                        type="checkbox"
+                        checked={runBrowsers[br]}
+                        onChange={() =>
+                          setRunBrowsers(r => ({ ...r, [br]: !r[br] }))
+                        }
+                        className="mr-1"
+                      />
+                      {br.charAt(0).toUpperCase() + br.slice(1)}
+                    </label>
+                  ))}
+                </div>
+
+                {/* ← new: disable while running */}
+                <button
+                  onClick={() => runCase(selectedSuite, selectedCase)}
+                  disabled={
+                    caseStatus[`${selectedSuite.name}::${selectedCase.name}`] ===
+                    'running'
+                  }
+                  className="flex items-center space-x-1 px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                >
+                  <PlayIcon className="h-5 w-5" />
+                  <span>Run Case</span>
+                  {(() => {
+                    const key = `${selectedSuite.name}::${selectedCase.name}`;
+                    const cs = caseStatus[key] || 'idle';
+                    if (cs === 'running')
+                      return <span className="ml-2 loader h-5 w-5" />;
+                    if (cs === 'passed')
+                      return <span className="ml-2 text-green-300">✅</span>;
+                    if (cs === 'failed')
+                      return <span className="ml-2 text-red-400">❌</span>;
+                    return null;
+                  })()}
+                </button>
+              </div>
+
               <TestCaseBuilder
                 projectDir={projectDir!}
                 suiteName={selectedSuite.name}
@@ -459,9 +559,64 @@ export default function SuitePlayground({ onBack }: { onBack: () => void }) {
               />
             </div>
           ) : (
-            <p className="text-gray-500">
-              Select a test case or hook under “{selectedSuite.name}” to edit.
-            </p>
+            /* --- SUITE ONLY: run options + info --- */
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-xl font-semibold">
+                  Suite: “{selectedSuite.name}”
+                </h3>
+
+                {/* ← new: run settings */}
+                <div className="flex items-center space-x-4">
+                  <label className="flex items-center text-sm">
+                    <input
+                      type="checkbox"
+                      checked={runHeadless}
+                      onChange={e => setRunHeadless(e.target.checked)}
+                      className="mr-1"
+                    />
+                    Headless
+                  </label>
+                  {(['chrome','firefox','safari','edge'] as const).map(br => (
+                    <label key={br} className="flex items-center text-sm">
+                      <input
+                        type="checkbox"
+                        checked={runBrowsers[br]}
+                        onChange={() =>
+                          setRunBrowsers(r => ({ ...r, [br]: !r[br] }))
+                        }
+                        className="mr-1"
+                      />
+                      {br.charAt(0).toUpperCase() + br.slice(1)}
+                    </label>
+                  ))}
+                </div>
+
+                {/* ← new: disable while running */}
+                <button
+                  onClick={() => runSuite(selectedSuite)}
+                  disabled={suiteStatus[selectedSuite.name] === 'running'}
+                  className="flex items-center space-x-1 px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                >
+                  <PlayIcon className="h-5 w-5" />
+                  <span>Run Suite</span>
+                  {(() => {
+                    const st = suiteStatus[selectedSuite.name] || 'idle';
+                    if (st === 'running')
+                      return <span className="ml-2 loader h-5 w-5" />;
+                    if (st === 'passed')
+                      return <span className="ml-2 text-green-300">✅</span>;
+                    if (st === 'failed')
+                      return <span className="ml-2 text-red-400">❌</span>;
+                    return null;
+                  })()}
+                </button>
+              </div>
+
+              <p className="text-gray-500 mb-4">
+                Select a test case to edit or click “Run Suite” to execute all tests.
+              </p>
+            </div>
           )
         ) : (
           <p className="text-gray-500">No suite selected.</p>

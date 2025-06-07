@@ -2,10 +2,12 @@ import os from 'os';
 import { app, BrowserWindow, ipcMain, shell,dialog } from 'electron';
 import path from 'path';
 // main.ts (Electron main process)
-import { exec } from 'child_process';
+
+import { exec,spawn } from 'child_process';
 let mainWindow: BrowserWindow | null = null;
 const DEV_URL = 'http://localhost:5173';
 import fs from 'fs/promises';
+import fsp from 'fs';
 import util from 'util';
 import klaw from 'klaw';
 import { ProjectMeta } from './shared/types'; 
@@ -60,7 +62,7 @@ ipcMain.handle('project:create', async (_evt, { basePath, projectName }) => {
   // 2) Init npm + install deps
   await execAsync('npm init -y', { cwd: projectDir });
   await execAsync(
-    'npm install -D @playwright/test playwright allure-commandline',
+    'npm install -D @playwright/test playwright allure-commandline allure-playwright',
     { cwd: projectDir }
   );
   // 3) Download browsers
@@ -280,6 +282,101 @@ ipcMain.handle('delete-path', async (_evt, fullPath: string) => {
   return;
 });
 
+// Run an entire suite
+// ipcMain.handle(
+//   'run:suite',
+//   async (_evt, projectDir: string, suiteName: string) => {
+//     const spec = findSpecFile(projectDir, suiteName);
+//     const { passed, output } = await runPlaywright(projectDir, [spec]);
+//     return { passed, output };
+//   }
+// );
+
+// // Run a single test case via grep
+// ipcMain.handle(
+//   'run:testcase',
+//   async (_evt, projectDir: string, suiteName: string, caseName: string) => {
+//     const spec = findSpecFile(projectDir, suiteName);
+//     const { passed, output } = await runPlaywright(projectDir, [
+//       spec,
+//       `--grep=${caseName}`,
+//       '--reporter=list',
+//     ]);
+//     return { passed, output };
+//   }
+// );  
+
+ipcMain.handle(
+  'run:suite',
+  async (
+    _evt,
+    projectDir: string,
+    suiteName: string,
+    headless: boolean,
+    browsers: string[]       // [ 'chrome', 'firefox', ... ]
+  ) => {
+    const spec = findSpecFile(projectDir, suiteName);
+
+    const results = await Promise.all(
+      browsers.map(name => {
+        const { browser, channel } = normalizeBrowserFlags(name);
+        const args = [
+          spec,
+          '--reporter=list',
+          `--browser=${browser}`,         // e.g. chromium|firefox|webkit|all
+        ];
+        if (channel) args.push(`--channel=${channel}`); // for edge
+        if (!headless) args.push('--headed');
+        return runPlaywright(projectDir, args).then(r => ({ name, ...r }));
+      })
+    );
+
+    const passed = results.every(r => r.passed);
+    const output = results
+      .map(r => `[${r.name}] ${r.passed ? 'PASS' : 'FAIL'}\n${r.output}`)
+      .join('\n\n');
+
+    return { passed, output };
+  }
+);
+
+ipcMain.handle(
+  'run:testcase',
+  async (
+    _evt,
+    projectDir: string,
+    suiteName: string,
+    caseName: string,
+    headless: boolean,
+    browsers: string[]
+  ) => {
+    const spec = findSpecFile(projectDir, suiteName);
+
+    const results = await Promise.all(
+      browsers.map(name => {
+        const { browser, channel } = normalizeBrowserFlags(name);
+        const args = [
+          spec,
+          `--grep=${caseName}`,
+          '--reporter=list',
+          `--browser=${browser}`,
+        ];
+        if (channel) args.push(`--channel=${channel}`);
+        if (!headless) args.push('--headed');
+        return runPlaywright(projectDir, args).then(r => ({ name, ...r }));
+      })
+    );
+
+    const passed = results.every(r => r.passed);
+    const output = results
+      .map(r => `[${r.name}] ${r.passed ? 'PASS' : 'FAIL'}\n${r.output}`)
+      .join('\n\n');
+
+    return { passed, output };
+  }
+);
+
+
 app.whenReady().then(async () => {
   // 1) Make sure the folder is there
   await ensureProjectsDir();
@@ -322,5 +419,73 @@ async function generatePageObjects(
     lines.push(`}`);
     const filePath = path.join(dir, `${pageName}.ts`);
     await fs.writeFile(filePath, lines.join('\n'), 'utf8');
+  }
+}
+
+/** Simple slugify: “My Suite Name” → “my_suite_name” */
+function slugify(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_|_$/g, '');
+}
+
+function findSpecFile(projectDir: string, suiteName: string): string {
+  const testsDir = path.join(projectDir, 'tests');
+  const files = fsp.readdirSync(testsDir);   // ← now using fs.readdirSync
+  const slug = slugify(suiteName);
+  const match = files.find((f) => f === `${slug}.spec.ts`);
+  if (!match) {
+    throw new Error(`Spec for suite "${suiteName}" not found`);
+  }
+  return path.join(testsDir, match);
+}
+
+// async function runPlaywright(
+//   projectDir: string,
+//   args: string[]
+// ): Promise<{ passed: boolean; output: string }> {
+//   return new Promise((resolve) => {
+//     const cp = spawn('npx', ['playwright', 'test', ...args], {
+//       cwd: projectDir,
+//       shell: true,
+//     });
+//     let output = '';
+//     cp.stdout.on('data', (d) => (output += d.toString()));
+//     cp.stderr.on('data', (d) => (output += d.toString()));
+//     cp.on('close', (code) => resolve({ passed: code === 0, output }));
+//   });
+// }
+function runPlaywright(
+  cwd: string,
+  args: string[]
+): Promise<{ passed: boolean; output: string }> {
+  return new Promise((resolve, reject) => {
+    const child = spawn('npx', ['playwright', 'test', ...args], { cwd, shell: true });
+    let out = '';
+    child.stdout.on('data', d => (out += d.toString()));
+    child.stderr.on('data', d => (out += d.toString()));
+    child.on('exit', code => resolve({ passed: code === 0, output: out }));
+    child.on('error', reject);
+  });
+}
+
+/** 
+ * helper to map your UI names → Playwright flags 
+ */
+function normalizeBrowserFlags(name: string): { browser: string; channel?: string } {
+  switch (name) {
+    case 'chrome':
+      return { browser: 'chromium' };
+    case 'edge':
+      return { browser: 'chromium'};
+    case 'safari':
+      return { browser: 'webkit' };
+    case 'firefox':
+      return { browser: 'firefox' };
+    default:
+      // fallback to "all" if somehow empty
+      return { browser: 'all' };
   }
 }

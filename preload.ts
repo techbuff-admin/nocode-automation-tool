@@ -31,6 +31,33 @@ contextBridge.exposeInMainWorld('api', {
   // ← new:
   pathExists:   (p: string) => ipcRenderer.invoke('path-exists', p),
   deletePath:   (p: string) => ipcRenderer.invoke('delete-path', p),
+  runTestCase: (
+        projectDir: string,
+        suiteName: string,
+        caseName: string,
+        headless: boolean,        // ← new
+        browsers: string[]        // ← new
+      ) => ipcRenderer.invoke(
+        'run:testcase',
+        projectDir,
+        suiteName,
+        caseName,
+        headless,                 // ← new
+        browsers                  // ← new
+      ),
+    runSuite: (
+        projectDir: string,
+        suiteName: string,
+        headless: boolean,        // ← new
+        browsers: string[]        // ← new
+      ) => ipcRenderer.invoke(
+        'run:suite',
+        projectDir,
+        suiteName,
+        headless,                 // ← new
+        browsers                  // ← new
+      ),
+      
  
 });
 

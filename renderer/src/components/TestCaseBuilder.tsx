@@ -329,7 +329,8 @@ export default function TestCaseBuilder({
         </Droppable>
       </DragDropContext>
 
-      {locPicker.open && meta.pages.length > 0 && (
+      {/* {locPicker.open && meta.pages.length > 0 && ( */}
+      {locPicker.open && (  
         <LocatorSearch
           pages={meta.pages as PageObject[]}
           onSelect={handleLocatorSelect}
