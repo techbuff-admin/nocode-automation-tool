@@ -386,8 +386,194 @@ ipcMain.handle(
   }
 );
 
+/** 2) Jira description fetch */
+// ipcMain.handle('jira:fetchDescription', async (_evt, ticketId: string) => {
+//   const { JIRA_BASE_URL, JIRA_EMAIL, JIRA_API_TOKEN } = process.env;
+//   if (!JIRA_BASE_URL || !JIRA_EMAIL || !JIRA_API_TOKEN) {
+//     throw new Error('Missing JIRA_BASE_URL, JIRA_EMAIL or JIRA_API_TOKEN in env');
+//   }
+//   const url = `${JIRA_BASE_URL}/rest/api/3/issue/${encodeURIComponent(ticketId)}?fields=description`;
+//   const auth = Buffer.from(`${JIRA_EMAIL}:${JIRA_API_TOKEN}`).toString('base64');
+//   const res = await fetch(url, {
+//     headers: {
+//       'Authorization': `Basic ${auth}`,
+//       'Accept': 'application/json',
+//     },
+//   });
+//   if (!res.ok) throw new Error(`Jira API returned ${res.status}`);
+//   const data = await res.json() as any;
+//   // Convert ADF → plain text
+//   const content = data.fields.description?.content || [];
+//   let text = '';
+//   for (const block of content) {
+//     for (const inner of block.content || []) {
+//       text += inner.text || '';
+//     }
+//     text += '\n\n';
+//   }
+//   return text.trim();
+// });
+
+// /** 3) Azure DevOps description fetch */
+// ipcMain.handle('azure:fetchDescription', async (_evt, workItemId: string) => {
+//   const { AZURE_DEVOPS_ORG_URL, AZURE_DEVOPS_PAT } = process.env;
+//   if (!AZURE_DEVOPS_ORG_URL || !AZURE_DEVOPS_PAT) {
+//     throw new Error('Missing AZURE_DEVOPS_ORG_URL or AZURE_DEVOPS_PAT in env');
+//   }
+//   const url = `${AZURE_DEVOPS_ORG_URL}/_apis/wit/workitems/${encodeURIComponent(workItemId)}?api-version=6.0&$expand=fields`;
+//   const auth = Buffer.from(`:${AZURE_DEVOPS_PAT}`).toString('base64');
+//   const res = await fetch(url, {
+//     headers: {
+//       'Authorization': `Basic ${auth}`,
+//       'Accept': 'application/json',
+//     },
+//   });
+//   if (!res.ok) throw new Error(`Azure DevOps API returned ${res.status}`);
+//   const data = await res.json() as any;
+//   const html = data.fields['System.Description'] || '';
+//   // strip HTML tags
+//   const text = html.replace(/<[^>]+>/g, '');
+//   return text.trim();
+// });
 
 
+/** Jira description fetch */
+ipcMain.handle(
+  'jira:fetchDescription',
+  async (_evt, projectDir: string, ticketId: string) => {
+    const { integrations = {} } = await loadProjectMeta(projectDir);
+    const { jiraBaseUrl, jiraEmail, jiraToken } = integrations;
+    if (!jiraBaseUrl || !jiraEmail || !jiraToken) {
+      throw new Error(
+        'Please configure your Jira URL, email & token in Integration Settings.'
+      );
+    }
+
+    const url = `${jiraBaseUrl.replace(/\/$/, '')}/rest/api/3/issue/${encodeURIComponent(
+      ticketId
+    )}?fields=description`;
+    const auth = Buffer.from(`${jiraEmail}:${jiraToken}`).toString('base64');
+    const res = await fetch(url, {
+      headers: { Authorization: `Basic ${auth}`, Accept: 'application/json' },
+    });
+
+    if (res.status === 404) {
+      throw new Error(`Jira issue "${ticketId}" not found.`);
+    }
+    if (!res.ok) {
+      throw new Error(`Jira API error (status ${res.status}).`);
+    }
+    const data = (await res.json()) as any;
+    const adf = data.fields.description?.content || [];
+    const text = extractADFText(adf).trim();
+    return text;
+  }
+);
+
+ipcMain.handle(
+  'azure:fetchDescription',
+  async (_evt, projectDir: string, workItemId: string) => {
+    const { integrations = {} } = await loadProjectMeta(projectDir);
+    const { azureOrgUrl, azurePAT } = integrations;
+    if (!azureOrgUrl || !azurePAT) {
+      throw new Error(
+        'Please configure your Azure DevOps Org URL & PAT in Integration Settings.'
+      );
+    }
+
+    const url = `${azureOrgUrl.replace(/\/$/, '')}/_apis/wit/workitems/${encodeURIComponent(
+      workItemId
+    )}?api-version=6.0&$expand=fields`;
+    const auth = Buffer.from(`:${azurePAT}`).toString('base64');
+    const res = await fetch(url, {
+      headers: { Authorization: `Basic ${auth}`, Accept: 'application/json' },
+    });
+
+    if (res.status === 404) {
+      throw new Error(`Azure work item "${workItemId}" not found.`);
+    }
+    if (!res.ok) {
+      throw new Error(`Azure DevOps API error (status ${res.status}).`);
+    }
+
+    const data = (await res.json()) as any;
+    const html = data.fields['System.Description'] || '';
+    const text = html.replace(/<[^>]+>/g, '');
+    return text.trim();
+  });
+
+ /** List the most recent 50 Jira issues visible to the user */
+ipcMain.handle('jira:listIssues', async (_evt, projectDir: string) => {
+  const { integrations = {} } = await loadProjectMeta(projectDir);
+  const { jiraBaseUrl, jiraEmail, jiraToken } = integrations;
+  if (!jiraBaseUrl || !jiraEmail || !jiraToken) {
+    throw new Error('Please configure Jira settings first');
+  }
+
+  const jql = encodeURIComponent('ORDER BY updated DESC');
+  const url = `${jiraBaseUrl.replace(/\/$/, '')}/rest/api/3/search?jql=${jql}&maxResults=50&fields=summary`;
+  const auth = Buffer.from(`${jiraEmail}:${jiraToken}`).toString('base64');
+
+  const res = await fetch(url, {
+    headers: {
+      Authorization: `Basic ${auth}`,
+      Accept: 'application/json',
+    },
+  });
+  if (!res.ok) throw new Error(`Jira search failed (${res.status})`);
+  const data = (await res.json()) as any;
+
+  return (data.issues || []).map((i: any) => ({
+    key: i.key,
+    summary: i.fields.summary as string,
+  }));
+});
+
+/** List the most recent 50 Azure DevOps work items */
+ipcMain.handle('azure:listWorkItems', async (_evt, projectDir: string) => {
+  const { integrations = {} } = await loadProjectMeta(projectDir);
+  const { azureOrgUrl, azurePAT } = integrations;
+  if (!azureOrgUrl || !azurePAT) {
+    throw new Error('Please configure Azure DevOps settings first');
+  }
+
+  const auth = Buffer.from(`:${azurePAT}`).toString('base64');
+  // 1) Run WIQL query to fetch IDs
+  const wiqlUrl = `${azureOrgUrl.replace(/\/$/, '')}/_apis/wit/wiql?api-version=6.0`;
+  const wiqlRes = await fetch(wiqlUrl, {
+    method: 'POST',
+    headers: {
+      Authorization: `Basic ${auth}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      query: 'Select [System.Id], [System.Title] From WorkItems ORDER BY [System.ChangedDate] DESC',
+    }),
+  });
+  if (!wiqlRes.ok) throw new Error(`Azure WIQL failed (${wiqlRes.status})`);
+  const wiqlData = (await wiqlRes.json()) as any;
+  const ids: number[] = (wiqlData.workItems || []).slice(0, 50).map((w: any) => w.id);
+  if (!ids.length) return [];
+
+  // 2) Batch GET their titles
+  const itemsUrl = `${azureOrgUrl.replace(/\/$/, '')}/_apis/wit/workitems?ids=${ids.join(
+    ','
+  )}&fields=System.Title&api-version=6.0`;
+  const itemsRes = await fetch(itemsUrl, {
+    headers: {
+      Authorization: `Basic ${auth}`,
+      Accept: 'application/json',
+    },
+  });
+  if (!itemsRes.ok) throw new Error(`Azure items fetch failed (${itemsRes.status})`);
+  const itemsData = (await itemsRes.json()) as any;
+
+  return (itemsData.value || []).map((w: any) => ({
+    id: String(w.id),
+    title: w.fields['System.Title'] as string,
+  }));
+});
+ 
 app.whenReady().then(async () => {
   // 1) Make sure the folder is there
   await ensureProjectsDir();
@@ -499,4 +685,37 @@ function normalizeBrowserFlags(name: string): { browser: string; channel?: strin
       // fallback to "all" if somehow empty
       return { browser: 'all' };
   }
+}
+
+/**
+ * Helper: load nca-config.json for a project
+ */
+async function loadProjectMeta(projectDir: string) {
+  const metaPath = path.join(projectDir, 'nca-config.json');
+  const raw = await fs.readFile(metaPath, 'utf8');
+  const meta = JSON.parse(raw) as any;
+  return meta as { integrations?: {
+    jiraBaseUrl?: string;
+    jiraEmail?: string;
+    jiraToken?: string;
+    azureOrgUrl?: string;
+    azurePAT?: string;
+  } };
+}
+// Recursively extract all text from an ADF node tree
+function extractADFText(nodes: any[]): string {
+  let out = '';
+  for (const node of nodes) {
+    if (node.text) {
+      out += node.text;
+    }
+    if (node.content) {
+      out += extractADFText(node.content);
+    }
+    // Add a newline after paragraphs and headings for readability
+    if (['paragraph', 'heading', 'listItem'].includes(node.type)) {
+      out += '\n';
+    }
+  }
+  return out;
 }

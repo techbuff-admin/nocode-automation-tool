@@ -60,5 +60,12 @@ export interface ProjectMeta {
   };
   pages: PageObject[];
   suites: TestSuite[];
+  integrations?: {            // ← newly added
+    jiraBaseUrl?: string;
+    jiraEmail?: string;
+    jiraToken?: string;
+    azureOrgUrl?: string;
+    azurePAT?: string;
+  };
 }
 

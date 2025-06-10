@@ -60,5 +60,10 @@ contextBridge.exposeInMainWorld('api', {
       
       generateReport: (dir: string) => ipcRenderer.invoke('generateReport', dir),
       clearReports:   (dir: string) => ipcRenderer.invoke('clearReports', dir),
+      fetchJiraDescription:  (projectDir: string, ticketId: string) => ipcRenderer.invoke('jira:fetchDescription', projectDir, ticketId),
+      fetchAzureDescription: (projectDir: string, workItemId: string) => ipcRenderer.invoke('azure:fetchDescription',  projectDir, workItemId),
+      jiraListIssues:    (projectDir: string) => ipcRenderer.invoke('jira:listIssues', projectDir),
+      azureListWorkItems:(projectDir: string) => ipcRenderer.invoke('azure:listWorkItems', projectDir),
+      
 });
 

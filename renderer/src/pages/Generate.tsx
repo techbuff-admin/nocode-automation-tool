@@ -1,5 +1,6 @@
 // renderer/src/pages/Generate.tsx
 import React, { useContext } from 'react';
+import IntegrationSettings from '../components/IntegrationSettings';    // ← new
 import ChatGPTPrompt from '../components/ChatGPTPrompt';
 import { ChatContext } from '../context/ChatContext';
 import DownloadButton from '../components/DownloadButton';
@@ -11,7 +12,10 @@ export default function Generate() {
     <div>
       <h2 className="text-2xl font-bold mb-4">Generate Test Cases</h2>
 
-      {/* 1) Your prompt + button */}
+      {/* 0) Integration settings */}
+      <IntegrationSettings />   {/* ← new */}
+
+      {/* 1) Your prompt + generate button */}
       <ChatGPTPrompt />
 
       {/* 2) Inline loader, non-blocking */}

@@ -23,6 +23,8 @@ export class ProjectMetaService {
     try {
       const raw = await fs.readFile(this.metaPath, 'utf8');
       const m = JSON.parse(raw) as ProjectMeta;
+      // ← new: grab integrations if present
+      const integrations = m.integrations || {};
       // Convert pages object→array if needed
       const pagesArray: PageObject[] = Array.isArray(m.pages)
         ? m.pages
@@ -35,6 +37,7 @@ export class ProjectMetaService {
         env: m.env || { baseUrl: '', timeout: 5000 },
         pages: pagesArray,
         suites: m.suites || [],
+        integrations:integrations  
       };
     } catch (err: any) {
       if (err.code === 'ENOENT') {
@@ -43,6 +46,7 @@ export class ProjectMetaService {
           env: { baseUrl: '', timeout: 5000 },
           pages: [],
           suites: [],
+          integrations: {},    
         };
         await fs.writeFile(this.metaPath, JSON.stringify(meta, null, 2), 'utf8');
       } else {
