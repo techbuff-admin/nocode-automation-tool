@@ -2,6 +2,7 @@
 import React, { useContext, useEffect, useState } from 'react';
 import { ProjectContext } from '../context/ProjectContext';
 import { ProjectMeta } from '../../../shared/types';
+import { QuestionMarkCircleIcon } from '@heroicons/react/24/outline';
 
 interface Integrations {
   jiraBaseUrl?: string;
@@ -17,10 +18,16 @@ export default function IntegrationSettings() {
   const [integrations, setIntegrations] = useState<Integrations>({});
   const [saving, setSaving] = useState(false);
 
-  // 1) Load on mount
+  // Tooltip state
+  const [showTooltip, setShowTooltip] = useState<{
+    [key: string]: boolean;
+  }>({});
+
+  // Load existing meta
   useEffect(() => {
     if (!projectDir) return;
-    window.api.loadMeta(projectDir)
+    window.api
+      .loadMeta(projectDir)
       .then((m: ProjectMeta) => {
         setMeta(m);
         setIntegrations((m as any).integrations || {});
@@ -30,7 +37,7 @@ export default function IntegrationSettings() {
       });
   }, [projectDir]);
 
-  // 2) Handler to save integrations
+  // Save integrations back to disk
   const save = async () => {
     if (!meta || !projectDir) return;
     setSaving(true);
@@ -41,7 +48,6 @@ export default function IntegrationSettings() {
       };
       await window.api.saveMeta(projectDir, updated);
       setMeta(updated);
-      // (optional) show a toast/snackbar here
     } catch (err: any) {
       console.error('Error saving integrations', err);
       alert('Failed to save settings: ' + (err.message || err));
@@ -50,14 +56,48 @@ export default function IntegrationSettings() {
     }
   };
 
+  // Helper to render a label+tooltip
+  function renderLabel(
+    htmlFor: string,
+    text: string,
+    tooltipKey: string,
+    tipText: string
+  ) {
+    return (
+      <label className="flex items-center mb-1">
+        <span className="font-medium mr-1">{text}</span>
+        <button
+          type="button"
+          onClick={() =>
+            setShowTooltip((t) => ({ ...t, [tooltipKey]: !t[tooltipKey] }))
+          }
+          className="relative p-1 text-gray-600 hover:text-gray-800"
+        >
+          <QuestionMarkCircleIcon className="h-5 w-5" />
+          {showTooltip[tooltipKey] && (
+            <div className="absolute z-10 left-0 top-full mt-1 w-64 p-2 bg-gray-700 text-white text-sm rounded shadow-lg">
+              {tipText}
+            </div>
+          )}
+        </button>
+      </label>
+    );
+  }
+
   return (
     <div className="mb-6 p-4 border rounded-lg bg-gray-50">
       <h2 className="text-xl font-semibold mb-4">Integration Settings</h2>
 
       {/* Jira */}
       <div className="space-y-2 mb-4">
-        <label className="block font-medium">Jira Base URL</label>
+        {renderLabel(
+          'jiraBaseUrl',
+          'Jira Base URL',
+          'jiraBaseUrl',
+          'Your Jira Cloud base URL, e.g. https://yourcompany.atlassian.net'
+        )}
         <input
+          id="jiraBaseUrl"
           type="text"
           value={integrations.jiraBaseUrl || ''}
           onChange={(e) =>
@@ -67,8 +107,14 @@ export default function IntegrationSettings() {
           placeholder="https://yourcompany.atlassian.net"
         />
 
-        <label className="block font-medium">Jira Email</label>
+        {renderLabel(
+          'jiraEmail',
+          'Jira Email',
+          'jiraEmail',
+          'The email address of your Atlassian account'
+        )}
         <input
+          id="jiraEmail"
           type="email"
           value={integrations.jiraEmail || ''}
           onChange={(e) =>
@@ -78,8 +124,14 @@ export default function IntegrationSettings() {
           placeholder="you@yourcompany.com"
         />
 
-        <label className="block font-medium">Jira API Token</label>
+        {renderLabel(
+          'jiraToken',
+          'Jira API Token',
+          'jiraToken',
+          'Generate at https://id.atlassian.com/manage-profile/security/api-tokens'
+        )}
         <input
+          id="jiraToken"
           type="password"
           value={integrations.jiraToken || ''}
           onChange={(e) =>
@@ -92,8 +144,14 @@ export default function IntegrationSettings() {
 
       {/* Azure DevOps */}
       <div className="space-y-2 mb-4">
-        <label className="block font-medium">Azure DevOps Org URL</label>
+        {renderLabel(
+          'azureOrgUrl',
+          'Azure DevOps Org URL',
+          'azureOrgUrl',
+          'Your Azure DevOps URL, e.g. https://dev.azure.com/yourOrg'
+        )}
         <input
+          id="azureOrgUrl"
           type="text"
           value={integrations.azureOrgUrl || ''}
           onChange={(e) =>
@@ -103,8 +161,14 @@ export default function IntegrationSettings() {
           placeholder="https://dev.azure.com/yourOrg"
         />
 
-        <label className="block font-medium">Azure DevOps PAT</label>
+        {renderLabel(
+          'azurePAT',
+          'Azure DevOps PAT',
+          'azurePAT',
+          'Personal Access Token with Work Items (read) scope'
+        )}
         <input
+          id="azurePAT"
           type="password"
           value={integrations.azurePAT || ''}
           onChange={(e) =>
@@ -115,7 +179,6 @@ export default function IntegrationSettings() {
         />
       </div>
 
-      {/* Save button */}
       <button
         onClick={save}
         disabled={saving}
