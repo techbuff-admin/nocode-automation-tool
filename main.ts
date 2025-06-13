@@ -2,14 +2,17 @@ import os from 'os';
 import { app, BrowserWindow, ipcMain, shell,dialog } from 'electron';
 import path from 'path';
 // main.ts (Electron main process)
-import { exec } from 'child_process';
+
+import { exec,spawn } from 'child_process';
 let mainWindow: BrowserWindow | null = null;
 const DEV_URL = 'http://localhost:5173';
 import fs from 'fs/promises';
+import fsp from 'fs';
 import util from 'util';
 import klaw from 'klaw';
 import { ProjectMeta } from './shared/types'; 
 import { ProjectMetaService } from './backend/ProjectMetaService';
+
 
 const execAsync = util.promisify(exec);
 const ROOT_PROJECTS_DIR = path.join(os.homedir(), 'nca-projects');
@@ -60,7 +63,7 @@ ipcMain.handle('project:create', async (_evt, { basePath, projectName }) => {
   // 2) Init npm + install deps
   await execAsync('npm init -y', { cwd: projectDir });
   await execAsync(
-    'npm install -D @playwright/test playwright allure-commandline',
+    'npm install -D @playwright/test playwright allure-commandline allure-playwright',
     { cwd: projectDir }
   );
   // 3) Download browsers
@@ -73,7 +76,9 @@ ipcMain.handle('project:create', async (_evt, { basePath, projectName }) => {
 
 export default defineConfig({
   testDir: './tests',
-  reporter: [['list'], ['allure-playwright']],
+  reporter: [['list'], ['allure-playwright',{
+        resultsDir: "allure-results",
+      },]],
 });`
   );
  // 1) Write an initial metadata JSON
@@ -280,6 +285,295 @@ ipcMain.handle('delete-path', async (_evt, fullPath: string) => {
   return;
 });
 
+
+
+ipcMain.handle(
+  'run:suite',
+  async (
+    _evt,
+    projectDir: string,
+    suiteName: string,
+    headless: boolean,
+    browsers: string[]       // [ 'chrome', 'firefox', ... ]
+  ) => {
+    const spec = findSpecFile(projectDir, suiteName);
+
+    const results = await Promise.all(
+      browsers.map(name => {
+        const { browser, channel } = normalizeBrowserFlags(name);
+        const args = [
+          spec,
+          '--reporter=list,allure-playwright',
+          `--browser=${browser}`,         // e.g. chromium|firefox|webkit|all
+        ];
+        if (channel) args.push(`--channel=${channel}`); // for edge
+        if (!headless) args.push('--headed');
+        return runPlaywright(projectDir, args).then(r => ({ name, ...r }));
+      })
+    );
+
+    const passed = results.every(r => r.passed);
+    const output = results
+      .map(r => `[${r.name}] ${r.passed ? 'PASS' : 'FAIL'}\n${r.output}`)
+      .join('\n\n');
+
+    return { passed, output };
+  }
+);
+
+ipcMain.handle(
+  'run:testcase',
+  async (
+    _evt,
+    projectDir: string,
+    suiteName: string,
+    caseName: string,
+    headless: boolean,
+    browsers: string[]
+  ) => {
+    const spec = findSpecFile(projectDir, suiteName);
+
+    const results = await Promise.all(
+      browsers.map(name => {
+        const { browser, channel } = normalizeBrowserFlags(name);
+        const args = [
+          spec,
+          `--grep=${caseName}`,
+          '--reporter=list,allure-playwright',
+          `--browser=${browser}`,
+        ];
+        if (channel) args.push(`--channel=${channel}`);
+        if (!headless) args.push('--headed');
+        return runPlaywright(projectDir, args).then(r => ({ name, ...r }));
+      })
+    );
+
+    const passed = results.every(r => r.passed);
+    const output = results
+      .map(r => `[${r.name}] ${r.passed ? 'PASS' : 'FAIL'}\n${r.output}`)
+      .join('\n\n');
+
+    return { passed, output };
+  }
+);
+
+
+// ← new: generate & open Allure report in browser
+ipcMain.handle('generateReport', async (_evt, projectDir: string) => {
+  const resultsDir = path.join(projectDir, 'allure-results');
+  const reportDir  = path.join(projectDir, 'allure-report');
+
+  // 1) regenerate the report
+  await execAsync(
+    `npx allure generate "${resultsDir}" --clean -o "${reportDir}"`,
+    { cwd: projectDir }
+  );
+
+  // 2) open it in the browser
+  await execAsync(
+    `npx allure open "${reportDir}"`,
+    { cwd: projectDir }
+  );
+});
+// ← new: clear both folders
+ipcMain.handle(
+  'clearReports',
+  async (_evt, projectDir: string) => {
+    const resultsDir = path.join(projectDir, 'allure-results');
+    const reportDir  = path.join(projectDir, 'allure-report');
+    await fs.rm(resultsDir, { recursive: true, force: true });
+    await fs.rm(reportDir,  { recursive: true, force: true });
+  }
+);
+
+/** 2) Jira description fetch */
+// ipcMain.handle('jira:fetchDescription', async (_evt, ticketId: string) => {
+//   const { JIRA_BASE_URL, JIRA_EMAIL, JIRA_API_TOKEN } = process.env;
+//   if (!JIRA_BASE_URL || !JIRA_EMAIL || !JIRA_API_TOKEN) {
+//     throw new Error('Missing JIRA_BASE_URL, JIRA_EMAIL or JIRA_API_TOKEN in env');
+//   }
+//   const url = `${JIRA_BASE_URL}/rest/api/3/issue/${encodeURIComponent(ticketId)}?fields=description`;
+//   const auth = Buffer.from(`${JIRA_EMAIL}:${JIRA_API_TOKEN}`).toString('base64');
+//   const res = await fetch(url, {
+//     headers: {
+//       'Authorization': `Basic ${auth}`,
+//       'Accept': 'application/json',
+//     },
+//   });
+//   if (!res.ok) throw new Error(`Jira API returned ${res.status}`);
+//   const data = await res.json() as any;
+//   // Convert ADF → plain text
+//   const content = data.fields.description?.content || [];
+//   let text = '';
+//   for (const block of content) {
+//     for (const inner of block.content || []) {
+//       text += inner.text || '';
+//     }
+//     text += '\n\n';
+//   }
+//   return text.trim();
+// });
+
+// /** 3) Azure DevOps description fetch */
+// ipcMain.handle('azure:fetchDescription', async (_evt, workItemId: string) => {
+//   const { AZURE_DEVOPS_ORG_URL, AZURE_DEVOPS_PAT } = process.env;
+//   if (!AZURE_DEVOPS_ORG_URL || !AZURE_DEVOPS_PAT) {
+//     throw new Error('Missing AZURE_DEVOPS_ORG_URL or AZURE_DEVOPS_PAT in env');
+//   }
+//   const url = `${AZURE_DEVOPS_ORG_URL}/_apis/wit/workitems/${encodeURIComponent(workItemId)}?api-version=6.0&$expand=fields`;
+//   const auth = Buffer.from(`:${AZURE_DEVOPS_PAT}`).toString('base64');
+//   const res = await fetch(url, {
+//     headers: {
+//       'Authorization': `Basic ${auth}`,
+//       'Accept': 'application/json',
+//     },
+//   });
+//   if (!res.ok) throw new Error(`Azure DevOps API returned ${res.status}`);
+//   const data = await res.json() as any;
+//   const html = data.fields['System.Description'] || '';
+//   // strip HTML tags
+//   const text = html.replace(/<[^>]+>/g, '');
+//   return text.trim();
+// });
+
+
+/** Jira description fetch */
+ipcMain.handle(
+  'jira:fetchDescription',
+  async (_evt, projectDir: string, ticketId: string) => {
+    const { integrations = {} } = await loadProjectMeta(projectDir);
+    const { jiraBaseUrl, jiraEmail, jiraToken } = integrations;
+    if (!jiraBaseUrl || !jiraEmail || !jiraToken) {
+      throw new Error(
+        'Please configure your Jira URL, email & token in Integration Settings.'
+      );
+    }
+
+    const url = `${jiraBaseUrl.replace(/\/$/, '')}/rest/api/3/issue/${encodeURIComponent(
+      ticketId
+    )}?fields=description`;
+    const auth = Buffer.from(`${jiraEmail}:${jiraToken}`).toString('base64');
+    const res = await fetch(url, {
+      headers: { Authorization: `Basic ${auth}`, Accept: 'application/json' },
+    });
+
+    if (res.status === 404) {
+      throw new Error(`Jira issue "${ticketId}" not found.`);
+    }
+    if (!res.ok) {
+      throw new Error(`Jira API error (status ${res.status}).`);
+    }
+    const data = (await res.json()) as any;
+    const adf = data.fields.description?.content || [];
+    const text = extractADFText(adf).trim();
+    return text;
+  }
+);
+
+ipcMain.handle(
+  'azure:fetchDescription',
+  async (_evt, projectDir: string, workItemId: string) => {
+    const { integrations = {} } = await loadProjectMeta(projectDir);
+    const { azureOrgUrl, azurePAT } = integrations;
+    if (!azureOrgUrl || !azurePAT) {
+      throw new Error(
+        'Please configure your Azure DevOps Org URL & PAT in Integration Settings.'
+      );
+    }
+
+    const url = `${azureOrgUrl.replace(/\/$/, '')}/_apis/wit/workitems/${encodeURIComponent(
+      workItemId
+    )}?api-version=6.0&$expand=fields`;
+    const auth = Buffer.from(`:${azurePAT}`).toString('base64');
+    const res = await fetch(url, {
+      headers: { Authorization: `Basic ${auth}`, Accept: 'application/json' },
+    });
+
+    if (res.status === 404) {
+      throw new Error(`Azure work item "${workItemId}" not found.`);
+    }
+    if (!res.ok) {
+      throw new Error(`Azure DevOps API error (status ${res.status}).`);
+    }
+
+    const data = (await res.json()) as any;
+    const html = data.fields['System.Description'] || '';
+    const text = html.replace(/<[^>]+>/g, '');
+    return text.trim();
+  });
+
+ /** List the most recent 50 Jira issues visible to the user */
+ipcMain.handle('jira:listIssues', async (_evt, projectDir: string) => {
+  const { integrations = {} } = await loadProjectMeta(projectDir);
+  const { jiraBaseUrl, jiraEmail, jiraToken } = integrations;
+  if (!jiraBaseUrl || !jiraEmail || !jiraToken) {
+    throw new Error('Please configure Jira settings first');
+  }
+
+  const jql = encodeURIComponent('ORDER BY updated DESC');
+  const url = `${jiraBaseUrl.replace(/\/$/, '')}/rest/api/3/search?jql=${jql}&maxResults=50&fields=summary`;
+  const auth = Buffer.from(`${jiraEmail}:${jiraToken}`).toString('base64');
+
+  const res = await fetch(url, {
+    headers: {
+      Authorization: `Basic ${auth}`,
+      Accept: 'application/json',
+    },
+  });
+  if (!res.ok) throw new Error(`Jira search failed (${res.status})`);
+  const data = (await res.json()) as any;
+
+  return (data.issues || []).map((i: any) => ({
+    key: i.key,
+    summary: i.fields.summary as string,
+  }));
+});
+
+/** List the most recent 50 Azure DevOps work items */
+ipcMain.handle('azure:listWorkItems', async (_evt, projectDir: string) => {
+  const { integrations = {} } = await loadProjectMeta(projectDir);
+  const { azureOrgUrl, azurePAT } = integrations;
+  if (!azureOrgUrl || !azurePAT) {
+    throw new Error('Please configure Azure DevOps settings first');
+  }
+
+  const auth = Buffer.from(`:${azurePAT}`).toString('base64');
+  // 1) Run WIQL query to fetch IDs
+  const wiqlUrl = `${azureOrgUrl.replace(/\/$/, '')}/_apis/wit/wiql?api-version=6.0`;
+  const wiqlRes = await fetch(wiqlUrl, {
+    method: 'POST',
+    headers: {
+      Authorization: `Basic ${auth}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      query: 'Select [System.Id], [System.Title] From WorkItems ORDER BY [System.ChangedDate] DESC',
+    }),
+  });
+  if (!wiqlRes.ok) throw new Error(`Azure WIQL failed (${wiqlRes.status})`);
+  const wiqlData = (await wiqlRes.json()) as any;
+  const ids: number[] = (wiqlData.workItems || []).slice(0, 50).map((w: any) => w.id);
+  if (!ids.length) return [];
+
+  // 2) Batch GET their titles
+  const itemsUrl = `${azureOrgUrl.replace(/\/$/, '')}/_apis/wit/workitems?ids=${ids.join(
+    ','
+  )}&fields=System.Title&api-version=6.0`;
+  const itemsRes = await fetch(itemsUrl, {
+    headers: {
+      Authorization: `Basic ${auth}`,
+      Accept: 'application/json',
+    },
+  });
+  if (!itemsRes.ok) throw new Error(`Azure items fetch failed (${itemsRes.status})`);
+  const itemsData = (await itemsRes.json()) as any;
+
+  return (itemsData.value || []).map((w: any) => ({
+    id: String(w.id),
+    title: w.fields['System.Title'] as string,
+  }));
+});
+ 
 app.whenReady().then(async () => {
   // 1) Make sure the folder is there
   await ensureProjectsDir();
@@ -323,4 +617,105 @@ async function generatePageObjects(
     const filePath = path.join(dir, `${pageName}.ts`);
     await fs.writeFile(filePath, lines.join('\n'), 'utf8');
   }
+}
+
+/** Simple slugify: “My Suite Name” → “my_suite_name” */
+function slugify(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_|_$/g, '');
+}
+
+function findSpecFile(projectDir: string, suiteName: string): string {
+  const testsDir = path.join(projectDir, 'tests');
+  const files = fsp.readdirSync(testsDir);   // ← now using fs.readdirSync
+  const slug = slugify(suiteName);
+  const match = files.find((f) => f === `${slug}.spec.ts`);
+  if (!match) {
+    throw new Error(`Spec for suite "${suiteName}" not found`);
+  }
+  return path.join(testsDir, match);
+}
+
+// async function runPlaywright(
+//   projectDir: string,
+//   args: string[]
+// ): Promise<{ passed: boolean; output: string }> {
+//   return new Promise((resolve) => {
+//     const cp = spawn('npx', ['playwright', 'test', ...args], {
+//       cwd: projectDir,
+//       shell: true,
+//     });
+//     let output = '';
+//     cp.stdout.on('data', (d) => (output += d.toString()));
+//     cp.stderr.on('data', (d) => (output += d.toString()));
+//     cp.on('close', (code) => resolve({ passed: code === 0, output }));
+//   });
+// }
+function runPlaywright(
+  cwd: string,
+  args: string[]
+): Promise<{ passed: boolean; output: string }> {
+  return new Promise((resolve, reject) => {
+    const child = spawn('npx', ['playwright', 'test', ...args], { cwd, shell: true });
+    let out = '';
+    child.stdout.on('data', d => (out += d.toString()));
+    child.stderr.on('data', d => (out += d.toString()));
+    child.on('exit', code => resolve({ passed: code === 0, output: out }));
+    child.on('error', reject);
+  });
+}
+
+/** 
+ * helper to map your UI names → Playwright flags 
+ */
+function normalizeBrowserFlags(name: string): { browser: string; channel?: string } {
+  switch (name) {
+    case 'chrome':
+      return { browser: 'chromium' };
+    case 'edge':
+      return { browser: 'chromium'};
+    case 'safari':
+      return { browser: 'webkit' };
+    case 'firefox':
+      return { browser: 'firefox' };
+    default:
+      // fallback to "all" if somehow empty
+      return { browser: 'all' };
+  }
+}
+
+/**
+ * Helper: load nca-config.json for a project
+ */
+async function loadProjectMeta(projectDir: string) {
+  const metaPath = path.join(projectDir, 'nca-config.json');
+  const raw = await fs.readFile(metaPath, 'utf8');
+  const meta = JSON.parse(raw) as any;
+  return meta as { integrations?: {
+    jiraBaseUrl?: string;
+    jiraEmail?: string;
+    jiraToken?: string;
+    azureOrgUrl?: string;
+    azurePAT?: string;
+  } };
+}
+// Recursively extract all text from an ADF node tree
+function extractADFText(nodes: any[]): string {
+  let out = '';
+  for (const node of nodes) {
+    if (node.text) {
+      out += node.text;
+    }
+    if (node.content) {
+      out += extractADFText(node.content);
+    }
+    // Add a newline after paragraphs and headings for readability
+    if (['paragraph', 'heading', 'listItem'].includes(node.type)) {
+      out += '\n';
+    }
+  }
+  return out;
 }

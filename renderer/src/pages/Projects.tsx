@@ -7,15 +7,24 @@ import { TrashIcon } from '@heroicons/react/24/outline';
 export default function Projects() {
   const [rootDir, setRootDir] = useState<string>('');
   const [projects, setProjects] = useState<{ name: string; path: string }[]>([]);
-  const { basePath, setProjectDir, setProjectName } = useContext(ProjectContext);
+  const {
+    basePath,
+    projectDir,               // ← new: so we can clear it if it's the one deleted
+    setProjectDir,
+    setProjectName,
+  } = useContext(ProjectContext);
   const navigate = useNavigate();
 
   // On mount, fetch root directory & list of projects
   useEffect(() => {
-    window.api.getRootProjectsDir().then((d) => {
-      setRootDir(d);
-      window.api.listProjects().then(setProjects);
-    });
+    window.api
+      .getRootProjectsDir()
+      .then((d) => {
+        setRootDir(d);
+        return window.api.listProjects();
+      })
+      .then(setProjects)
+      .catch((err) => console.error('Failed to list projects', err));
   }, []);
 
   // Open a project
@@ -27,18 +36,28 @@ export default function Projects() {
 
   // Delete a project folder, after confirmation
   const deleteProject = async (proj: { name: string; path: string }) => {
-    if (!basePath) return;
+    // ← new: always prompt right away
     if (
-      !confirm(`Delete project "${proj.name}" and all its tests? This cannot be undone.`)
+      !confirm(
+        `Delete project "${proj.name}" and all its tests? This cannot be undone.`
+      )
     )
       return;
 
-    // Remove folder on disk
-    await window.api.deletePath(proj.path);
+    try {
+      // Remove folder on disk
+      await window.api.deletePath(proj.path);
+    } catch (err: any) {
+      console.error('Error deleting project', err);
+      alert(`Failed to delete project: ${err.message || err}`);
+      return;
+    }
 
-    // If this was the active project, clear the context
-    setProjectDir(null);
-    setProjectName('');
+    // ← new: if this was the active project, clear it
+    if (projectDir === proj.path) {
+      setProjectDir(null);
+      setProjectName('');
+    }
 
     // Update UI
     setProjects((ps) => ps.filter((p) => p.path !== proj.path));
