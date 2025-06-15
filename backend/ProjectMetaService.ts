@@ -272,8 +272,52 @@ export class ProjectMetaService {
         return `    await page.click('${a.selector}');\n`;
       case 'wait':
         return `    await page.waitForTimeout(${a.timeout});\n`;
+        case 'dblclick':
+         return  `    await page.dblclick('${a.selector}');\n`;
+         
+        case 'hover':
+          return `    await page.hover('${a.selector}');\n`;
+       case 'press':
+          return `    await page.press('${a.selector}', '${a.key}');\n`;
+          
+        case 'check':
+          return `    await page.check('${a.selector}');\n`;
+         
+        case 'uncheck':
+          return `    await page.uncheck('${a.selector}');\n`;
+         
+        case 'selectOption':
+          return `    await page.selectOption('${a.selector}', '${a.value}');\n`;
+         
+        case 'setInputFiles':
+          return `    await page.setInputFiles('${a.selector}', ${JSON.stringify(a.files)});\n`;
+         
+        case 'screenshot':
+          return `    await page.screenshot({ path: '${a.selector}' });\n`;
+        
+        case 'assertion':
+        case 'assert':
+          const target = a.selector
+          ? `page.locator('${a.selector}')`
+          : 'page';
+        const matcher = a.assertion;
+        var statement = '';
+        // numeric expected for toHaveCount, string otherwise
+          // Assertions that operate on the whole page:
+       
+        const arg = a.expected !== undefined
+          ? (typeof a.expected === 'number' ? a.expected : `'${a.expected}'`)
+          : '';
+          
+          if (matcher === 'toHaveURL' || matcher === 'toHaveTitle') 
+            statement= `    await expect(page).${matcher}(${arg});\n`;
+          else
+          statement= `    await expect(${target}).${matcher}(${arg});\n`;
+        return statement;
+      
+
       default:
-        return '';
+        return `    // TODO: handle ${JSON.stringify(a)}\n`;
     }
   }
 

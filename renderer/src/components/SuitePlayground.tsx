@@ -191,7 +191,6 @@ export default function SuitePlayground({ onBack }: { onBack: () => void }) {
   const generateAndOpenReport = async () => {
     if (!projectDir) return;
     await window.api.generateReport(projectDir);
-   // await window.api.serveAllure(projectDir);
     setHasResults(true);
     setHasReport(true);
   };
@@ -204,7 +203,6 @@ export default function SuitePlayground({ onBack }: { onBack: () => void }) {
       )
     )
       return;
-    await window.api.clearReports(projectDir);
     await window.api.clearReports(projectDir);
     setHasResults(false);
     setHasReport(false);
@@ -263,9 +261,12 @@ export default function SuitePlayground({ onBack }: { onBack: () => void }) {
                             setEditingSuite(null);
                             return;
                           }
+                          // --- filter out any existing "nn", then rename the old one ---
                           const updated: ProjectMeta = {
                             ...meta,
-                            suites: meta.suites.map((x) =>
+                            suites: [
+                              ...meta.suites.filter(x => x.name !== nn)
+                            ].map(x =>
                               x.name === s.name ? { ...x, name: nn } : x
                             ),
                           };
@@ -331,7 +332,7 @@ export default function SuitePlayground({ onBack }: { onBack: () => void }) {
                                 if (!confirm(`Delete hook "${hook}"?`)) return;
                                 const updatedSuite: TestSuite = {
                                   ...s,
-                                  hooks: { ...s.hooks! },
+                                  hooks: { ...(s.hooks || {}) },
                                 };
                                 delete updatedSuite.hooks![hook];
                                 saveMeta({
@@ -408,9 +409,12 @@ export default function SuitePlayground({ onBack }: { onBack: () => void }) {
                                     setEditingCase(null);
                                     return;
                                   }
+                                  // --- filter out existing "nn", then rename the old one ---
                                   const updatedSuite: TestSuite = {
                                     ...selectedSuite,
-                                    cases: selectedSuite.cases.map((x) =>
+                                    cases: [
+                                      ...selectedSuite.cases.filter(x => x.name !== nn)
+                                    ].map(x =>
                                       x.name === c.name ? { ...x, name: nn } : x
                                     ),
                                   };

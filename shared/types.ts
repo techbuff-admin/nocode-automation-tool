@@ -92,7 +92,8 @@ export type Action =
   | { type: 'setInputFiles'; selector: string; files: string[] }
   | { type: 'screenshot'; selector: string }
   // ← new: assertion
-  | { type: 'assertion'; assertion: string; expected?: string };
+  | { type: 'assertion'; assertion: string; selector?: string;  expected?: string | number; }
+  | { type: 'assert'; assertion: string; selector?: string;  expected?: string | number; };
 
 export interface TestCase {
   name: string;
