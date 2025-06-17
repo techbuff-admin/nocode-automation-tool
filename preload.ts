@@ -64,6 +64,8 @@ contextBridge.exposeInMainWorld('api', {
       fetchAzureDescription: (projectDir: string, workItemId: string) => ipcRenderer.invoke('azure:fetchDescription',  projectDir, workItemId),
       jiraListIssues:    (projectDir: string) => ipcRenderer.invoke('jira:listIssues', projectDir),
       azureListWorkItems:(projectDir: string) => ipcRenderer.invoke('azure:listWorkItems', projectDir),
+      scanPage: (projectDir: string, pageName: string, url: string) =>
+        ipcRenderer.invoke('page:scan', projectDir, pageName, url),
       
 });
 

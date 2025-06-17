@@ -76,8 +76,13 @@ export interface PageObject {
   name: string;
   file?: string;
   selectors: Record<string, string>;
+  //selectors: Record<string, LocatorInfo>;
 }
-
+export interface LocatorInfo {
+  selector: string;
+  type?: string;
+ // screenshot?: string;
+}
 export type Action =
   | { type: 'goto'; url: string }
   | { type: 'fill'; selector: string; value: string }

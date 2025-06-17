@@ -1,6 +1,7 @@
 import os from 'os';
 import { app, BrowserWindow, ipcMain, shell,dialog } from 'electron';
 import path from 'path';
+import { chromium } from 'playwright';
 // main.ts (Electron main process)
 
 import { exec,spawn } from 'child_process';
@@ -573,7 +574,65 @@ ipcMain.handle('azure:listWorkItems', async (_evt, projectDir: string) => {
     title: w.fields['System.Title'] as string,
   }));
 });
+
+/**  
+ * IPC handler: crawl the given URL, extract interactive elements, 
+ * and return an array of { name, selector }  
+ */
+ipcMain.handle(
+  'page:scan',
+  async (_evt, projectDir: string, pageName: string, url: string) => {
+    const browser = await chromium.launch({ headless: true });
+    const page = await browser.newPage();
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
+
+    // Evaluate in page to pull out links, buttons, inputs, selects, etc.
+    const elements = await page.evaluate(() => {
+      const out: Array<{ name: string; selector: string }> = [];
+      const nodes = Array.from(
+        document.querySelectorAll(
+          'a, button, input, textarea, select, [role=button], [role=link]'
+        )
+      );
+      for (const el of nodes) {
+        let name =
+          el.getAttribute('aria-label') ||
+          el.getAttribute('alt') ||
+          el.getAttribute('title') ||
+          (el.textContent || '').trim().slice(0, 50) ||
+          (el as HTMLInputElement).placeholder ||
+          el.id ||
+          el.tagName.toLowerCase();
+        name = name
+          .replace(/[^a-zA-Z0-9]+/g, '_')
+          .replace(/^_+|_+$/g, '')
+          .toLowerCase() || el.tagName.toLowerCase();
+
+        let selector = '';
+        if (el.id) {
+          selector = `#${el.id}`;
+        } else if (el.tagName && (el as any).className) {
+          const classes = (el as any).className
+            .toString()
+            .trim()
+            .split(/\s+/)
+            .join('.');
+          selector = `${el.tagName.toLowerCase()}${classes ? '.' + classes : ''}`;
+        } else {
+          selector = el.tagName.toLowerCase();
+        }
+
+        out.push({ name, selector });
+      }
+      return out;
+    });
+
+    await browser.close();
+    return elements; // back to renderer
+  }
+);
  
+
 app.whenReady().then(async () => {
   // 1) Make sure the folder is there
   await ensureProjectsDir();
