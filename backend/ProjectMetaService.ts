@@ -293,8 +293,17 @@ export class ProjectMetaService {
           return `    await page.setInputFiles('${a.selector}', ${JSON.stringify(a.files)});\n`;
          
         case 'screenshot':
-          return `    await page.screenshot({ path: '${a.selector}' });\n`;
-        
+          //return `    await page.screenshot({ path: '${a.selector}' });\n`;
+         // return `    await page.screenshot();\n`;
+         // capture full‐page screenshot and attach to Allure via test.info()
+         return (
+          `    // ── screenshot attachment ──\n` +
+          `    await test.info().attach(\n` +
+          `      'screenshot',\n` +
+          `      { body: await page.screenshot(), contentType: 'image/png' }\n` +
+          `    );\n`
+        );
+          
         case 'assertion':
         case 'assert':
           const target = a.selector

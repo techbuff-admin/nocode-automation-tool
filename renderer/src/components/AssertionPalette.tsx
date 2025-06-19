@@ -37,7 +37,7 @@ export default function AssertionPalette() {
   const list = expanded ? ASSERTIONS : ASSERTIONS.slice(0, 10);
 
   return (
-    <div className="mt-4">
+    <div>
       <Droppable
         droppableId="assertions"
         isDropDisabled={true}
@@ -57,7 +57,8 @@ export default function AssertionPalette() {
                       ref={prov.innerRef}
                       {...prov.draggableProps}
                       {...prov.dragHandleProps}
-                      className="flex items-center space-x-1 px-2 py-1 bg-gray-100 rounded shadow cursor-grab"
+                      className="flex items-center space-x-1 p-2 bg-gray-100 rounded shadow cursor-grab"
+                      
                     >
                       <Icon className="h-5 w-5 text-gray-600" />
                       <span className="text-sm">{assertion.label}</span>

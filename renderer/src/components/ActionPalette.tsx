@@ -9,6 +9,12 @@ import {
   BoltIcon,
   ArrowDownOnSquareIcon,
   DocumentTextIcon,
+  CameraIcon,
+  CursorArrowRaysIcon,
+  CheckIcon,
+  CheckBadgeIcon,
+  ArrowUpIcon,
+  PlusIcon,
 } from '@heroicons/react/24/outline';
 
 const ACTIONS = [
@@ -17,13 +23,13 @@ const ACTIONS = [
   { id: 'click', label: 'Click', icon: CursorArrowRippleIcon },
   { id: 'wait', label: 'Wait', icon: ClockIcon },
   { id: 'dblclick', label: 'Double Click', icon: CursorArrowRippleIcon },
-  { id: 'hover', label: 'Hover', icon: CursorArrowRippleIcon },
+  { id: 'hover', label: 'Hover', icon: CursorArrowRaysIcon },
   { id: 'press', label: 'Press Key', icon: BoltIcon },
-  { id: 'check', label: 'Check', icon: CursorArrowRippleIcon },
-  { id: 'uncheck', label: 'Uncheck', icon: CursorArrowRippleIcon },
-  { id: 'selectOption', label: 'Select Option', icon: DocumentTextIcon },
-  { id: 'setInputFiles', label: 'Set Files', icon: ArrowDownOnSquareIcon },
-  { id: 'screenshot', label: 'Screenshot', icon: ArrowDownOnSquareIcon },
+  { id: 'check', label: 'Check', icon: CheckIcon },
+  { id: 'uncheck', label: 'Uncheck', icon: CheckBadgeIcon },
+  { id: 'selectOption', label: 'Select Option', icon: ArrowUpIcon },
+  { id: 'setInputFiles', label: 'Set Files', icon: PlusIcon },
+  { id: 'screenshot', label: 'Screenshot', icon: CameraIcon },
 ];
 
 export default function ActionPalette() {

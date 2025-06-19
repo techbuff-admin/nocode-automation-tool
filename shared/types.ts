@@ -141,6 +141,7 @@ export interface ProjectMeta {
     jiraEmail?: string;
     jiraToken?: string;
     azureOrgUrl?: string;
+    azureProject?: string;
     azurePAT?: string;
   };
 }

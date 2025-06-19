@@ -18,6 +18,7 @@ import ActionPalette from './ActionPalette';
 import AssertionPalette from './AssertionPalette';
 import InputDialog from './InputDialog';
 import LocatorSearch from './LocatorSearch';
+import { selectors } from 'playwright';
 
 interface Props {
   projectDir: string;
@@ -99,6 +100,7 @@ export default function TestCaseBuilder({
     if (source.droppableId === 'assertions' && destination.droppableId === 'steps') {
       const name = draggableId; // e.g. 'toHaveText', 'toHaveURL', etc.
 
+      
       // special: page‐level assertions need only a value
       if (name === 'toHaveURL' || name === 'toHaveTitle') {
         setDialog({
@@ -132,11 +134,17 @@ export default function TestCaseBuilder({
     if (source.droppableId === 'palette' && destination.droppableId === 'steps') {
       const type = draggableId as Action['type'];
 
+           // ─── page-level screenshot ───
+           if (type === 'screenshot') {
+            // no locator, no dialog
+            finalizeInsert({ type: 'screenshot',selector:'' }, destination.index);
+            return;
+         }
       // locator‐based actions
       if (
         [
           'click','fill','dblclick','hover','press',
-          'check','uncheck','selectOption','setInputFiles','screenshot',
+          'check','uncheck','selectOption','setInputFiles',
         ].includes(type)
       ) {
         setLocPicker({
@@ -162,7 +170,6 @@ export default function TestCaseBuilder({
         });
         return;
       }
-
       // wait timeout
       if (type === 'wait') {
         setDialog({
@@ -244,7 +251,7 @@ export default function TestCaseBuilder({
     if (
       [
         'click','fill','dblclick','hover','press',
-        'check','uncheck','selectOption','setInputFiles','screenshot',
+        'check','uncheck','selectOption','setInputFiles',,
       ].includes(act.type)
     ) {
       setLocPicker({
@@ -268,6 +275,11 @@ export default function TestCaseBuilder({
       });
       return;
     }
+      // screenshot has no editable parameters
+    if (act.type === 'screenshot') {
+      return;
+     }
+     
     if (act.type === 'wait') {
       setDialog({
         open: true,
@@ -451,7 +463,7 @@ export default function TestCaseBuilder({
                         {act.type === 'setInputFiles' &&
                           `SetFiles ${act.selector} = ${act.files.join(', ')}`}
                         {act.type === 'screenshot' &&
-                          `Screenshot ${act.selector}`}
+                          `Capture Page Screenshot`}
 
                         {/* Assertions */}
                         {act.type === 'assertion' && (

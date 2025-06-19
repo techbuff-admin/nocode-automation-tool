@@ -160,7 +160,20 @@ export default function IntegrationSettings() {
           className="w-full border rounded px-2 py-1"
           placeholder="https://dev.azure.com/yourOrg"
         />
-
+     {renderLabel(
+          'azureProject',
+          'Azure Project',
+          'azureProject',
+          'The name of your Azure DevOps project (e.g. MyTeamProject)'
+          
+        )}     
+    <input
+    type="text"
+    value={integrations.azureProject || ''}
+    onChange={e => setIntegrations(i => ({ ...i, azureProject: e.target.value }))}
+    placeholder="e.g. MyTeamProject"
+   className="w-full border rounded px-2 py-1"
+   />
         {renderLabel(
           'azurePAT',
           'Azure DevOps PAT',

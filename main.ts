@@ -471,39 +471,8 @@ ipcMain.handle(
   }
 );
 
-ipcMain.handle(
-  'azure:fetchDescription',
-  async (_evt, projectDir: string, workItemId: string) => {
-    const { integrations = {} } = await loadProjectMeta(projectDir);
-    const { azureOrgUrl, azurePAT } = integrations;
-    if (!azureOrgUrl || !azurePAT) {
-      throw new Error(
-        'Please configure your Azure DevOps Org URL & PAT in Integration Settings.'
-      );
-    }
 
-    const url = `${azureOrgUrl.replace(/\/$/, '')}/_apis/wit/workitems/${encodeURIComponent(
-      workItemId
-    )}?api-version=6.0&$expand=fields`;
-    const auth = Buffer.from(`:${azurePAT}`).toString('base64');
-    const res = await fetch(url, {
-      headers: { Authorization: `Basic ${auth}`, Accept: 'application/json' },
-    });
-
-    if (res.status === 404) {
-      throw new Error(`Azure work item "${workItemId}" not found.`);
-    }
-    if (!res.ok) {
-      throw new Error(`Azure DevOps API error (status ${res.status}).`);
-    }
-
-    const data = (await res.json()) as any;
-    const html = data.fields['System.Description'] || '';
-    const text = html.replace(/<[^>]+>/g, '');
-    return text.trim();
-  });
-
- /** List the most recent 50 Jira issues visible to the user */
+ /** List the most recent 500 Jira issues visible to the user */
 ipcMain.handle('jira:listIssues', async (_evt, projectDir: string) => {
   const { integrations = {} } = await loadProjectMeta(projectDir);
   const { jiraBaseUrl, jiraEmail, jiraToken } = integrations;
@@ -512,7 +481,7 @@ ipcMain.handle('jira:listIssues', async (_evt, projectDir: string) => {
   }
 
   const jql = encodeURIComponent('ORDER BY updated DESC');
-  const url = `${jiraBaseUrl.replace(/\/$/, '')}/rest/api/3/search?jql=${jql}&maxResults=50&fields=summary`;
+  const url = `${jiraBaseUrl.replace(/\/$/, '')}/rest/api/3/search?jql=${jql}&maxResults=500&fields=summary`;
   const auth = Buffer.from(`${jiraEmail}:${jiraToken}`).toString('base64');
 
   const res = await fetch(url, {
@@ -530,7 +499,7 @@ ipcMain.handle('jira:listIssues', async (_evt, projectDir: string) => {
   }));
 });
 
-/** List the most recent 50 Azure DevOps work items */
+
 ipcMain.handle('azure:listWorkItems', async (_evt, projectDir: string) => {
   const { integrations = {} } = await loadProjectMeta(projectDir);
   const { azureOrgUrl, azurePAT } = integrations;
@@ -539,8 +508,8 @@ ipcMain.handle('azure:listWorkItems', async (_evt, projectDir: string) => {
   }
 
   const auth = Buffer.from(`:${azurePAT}`).toString('base64');
-  // 1) Run WIQL query to fetch IDs
-  const wiqlUrl = `${azureOrgUrl.replace(/\/$/, '')}/_apis/wit/wiql?api-version=6.0`;
+  // 1) Ask for just 50 items max by adding &$top=50
+  const wiqlUrl = `${azureOrgUrl.replace(/\/$/, '')}/_apis/wit/wiql?api-version=6.1-preview.2&$top=500`;
   const wiqlRes = await fetch(wiqlUrl, {
     method: 'POST',
     headers: {
@@ -548,15 +517,23 @@ ipcMain.handle('azure:listWorkItems', async (_evt, projectDir: string) => {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      query: 'Select [System.Id], [System.Title] From WorkItems ORDER BY [System.ChangedDate] DESC',
+      query: `
+        SELECT [System.Id], [System.Title]
+        FROM WorkItems
+        ORDER BY [System.ChangedDate] DESC
+      `,
     }),
   });
-  if (!wiqlRes.ok) throw new Error(`Azure WIQL failed (${wiqlRes.status})`);
-  const wiqlData = (await wiqlRes.json()) as any;
-  const ids: number[] = (wiqlData.workItems || []).slice(0, 50).map((w: any) => w.id);
+  if (!wiqlRes.ok) {
+    const body = await wiqlRes.text();
+    throw new Error(`Azure WIQL failed (${wiqlRes.status}): ${body}`);
+  }
+  const wiqlData = await wiqlRes.json() as any;
+  // wiqlData.workItems will now be at most 50 entries
+  const ids: number[] = (wiqlData.workItems || []).map((w: any) => w.id);
   if (!ids.length) return [];
 
-  // 2) Batch GET their titles
+  // 2) Pull down their titles
   const itemsUrl = `${azureOrgUrl.replace(/\/$/, '')}/_apis/wit/workitems?ids=${ids.join(
     ','
   )}&fields=System.Title&api-version=6.0`;
@@ -567,13 +544,52 @@ ipcMain.handle('azure:listWorkItems', async (_evt, projectDir: string) => {
     },
   });
   if (!itemsRes.ok) throw new Error(`Azure items fetch failed (${itemsRes.status})`);
-  const itemsData = (await itemsRes.json()) as any;
+  const itemsData = await itemsRes.json() as any;
 
   return (itemsData.value || []).map((w: any) => ({
     id: String(w.id),
     title: w.fields['System.Title'] as string,
   }));
 });
+
+
+ipcMain.handle(
+  'azure:fetchDescription',
+  async (_evt, projectDir: string, workItemId: string) => {
+    const { integrations = {} } = await loadProjectMeta(projectDir);
+    const { azureOrgUrl, azurePAT, azureProject } = integrations;
+    if (!azureOrgUrl || !azurePAT || !azureProject) {
+      throw new Error(
+        'Please configure your Azure DevOps Org URL, Project & PAT in Integration Settings.'
+      );
+    }
+
+    const auth = Buffer.from(`:${azurePAT}`).toString('base64');
+    const org = azureOrgUrl.replace(/\/$/, '');
+    const proj = encodeURIComponent(azureProject);
+    const url = `${org}/${proj}/_apis/wit/workitems/${encodeURIComponent(
+      workItemId
+    )}?api-version=6.0&$expand=fields`;
+
+    const res = await fetch(url, {
+      headers: { Authorization: `Basic ${auth}`, Accept: 'application/json' },
+    });
+
+    if (res.status === 404) {
+      throw new Error(`Azure work item "${workItemId}" not found in project "${azureProject}".`);
+    }
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`Azure DevOps API error (status ${res.status}): ${err}`);
+    }
+
+    const data = (await res.json()) as any;
+    const html = data.fields['System.Description'] || '';
+    const text = html.replace(/<[^>]+>/g, '').trim();
+    return text;
+  }
+);
+
 
 /**  
  * IPC handler: crawl the given URL, extract interactive elements, 
@@ -759,6 +775,7 @@ async function loadProjectMeta(projectDir: string) {
     jiraToken?: string;
     azureOrgUrl?: string;
     azurePAT?: string;
+    azureProject?: string;
   } };
 }
 // Recursively extract all text from an ADF node tree
