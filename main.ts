@@ -1,5 +1,13 @@
 import os from 'os';
 import { app, BrowserWindow, ipcMain, shell,dialog } from 'electron';
+let captureWindow: BrowserWindow | null = null;
+// Extend globalThis to include custom properties
+declare global {
+  var __scanBrowser: import('playwright').Browser | undefined;
+  var __scanPage: import('playwright').Page | undefined;
+  var __scanPageName: string | undefined;
+  var __projectDir: string | undefined;
+}
 import path from 'path';
 import { chromium } from 'playwright';
 // main.ts (Electron main process)
@@ -13,7 +21,8 @@ import util from 'util';
 import klaw from 'klaw';
 import { ProjectMeta } from './shared/types'; 
 import { ProjectMetaService } from './backend/ProjectMetaService';
-
+let scanContext: import('playwright').BrowserContext | null = null;
+const scanSessions = new Map<string, BrowserWindow>();
 
 const execAsync = util.promisify(exec);
 const ROOT_PROJECTS_DIR = path.join(os.homedir(), 'nca-projects');
@@ -648,7 +657,216 @@ ipcMain.handle(
   }
 );
  
+// ipcMain.handle(
+//   'page:open-scan-session',
+//   async (_evt, projectDir: string, url: string) => {
+//     // launch a persistent, headed context so login sticks
+//     const userDataDir = path.join(projectDir, 'playwright-user-data');
+//     scanContext = await chromium.launchPersistentContext(userDataDir, {
+//       headless: false,
+//       viewport: { width: 1280, height: 800 },
+//     });
 
+//     const page = scanContext.pages()[0] || await scanContext.newPage();
+//     await page.goto(url, { waitUntil: 'domcontentloaded' });
+
+//     // inform the user to log in
+//     await dialog.showMessageBox({
+//       type: 'info',
+//       buttons: ['OK'],
+//       title: 'Log In',
+//       message: 'The browser is open. Please log in, then click “Extract Locators” in the app.',
+//     });
+
+//     return true;
+//   }
+// );
+
+// ipcMain.handle(
+//   'page:open-scan-session',
+//   async (_evt, projectDir: string, pageName: string, rawUrl: string) => {
+//     let url = rawUrl.trim();
+//     if (!/^https?:\/\//i.test(url)) {
+//       url = 'https://' + url;
+//     }
+
+//     // launch a headed browser so user can log in
+//     const browser = await chromium.launch({ headless: false });
+//     const page = await browser.newPage();
+
+//     // store these globally so your extract-locators handler can re-use the same context
+//     globalThis.__scanBrowser = browser;
+//     globalThis.__scanPage    = page;
+//     globalThis.__scanPageName = pageName;
+//     globalThis.__projectDir   = projectDir;
+
+//     await page.goto(url, { waitUntil: 'domcontentloaded' });
+//     return;
+//   }
+// );
+// ipcMain.handle(
+//   'page:extract-locators',
+//   async (_evt, projectDir: string, pageName: string) => {
+//     if (!scanContext) {
+//       throw new Error('Scan session not started. Click “Open & Log In” first.');
+//     }
+//     const page = scanContext.pages()[0];
+//     if (!page) throw new Error('No open page in scan session.');
+
+//     // pull out elements
+//     const elements = await page.evaluate(() => {
+//       type Out = { name: string; selector: string };
+//       const out: Out[] = [];
+//       document
+//         .querySelectorAll('a, button, input, textarea, select, [role=button], [role=link]')
+//         .forEach((el) => {
+//           let name =
+//             el.getAttribute('aria-label') ||
+//             el.getAttribute('alt') ||
+//             el.getAttribute('title') ||
+//             (el.textContent || '').trim().slice(0, 50) ||
+//             (el as HTMLInputElement).placeholder ||
+//             el.id ||
+//             el.tagName.toLowerCase();
+//           name = name
+//             .replace(/[^a-zA-Z0-9]+/g, '_')
+//             .replace(/^_+|_+$/g, '')
+//             .toLowerCase() || el.tagName.toLowerCase();
+
+//           let selector = '';
+//           if (el.id) {
+//             selector = `#${el.id}`;
+//           } else if ((el as any).className) {
+//             const classes = (el as any)
+//               .className
+//               .toString()
+//               .trim()
+//               .split(/\s+/)
+//               .join('.');
+//             selector = `${el.tagName.toLowerCase()}${classes ? '.' + classes : ''}`;
+//           } else {
+//             selector = el.tagName.toLowerCase();
+//           }
+//           out.push({ name, selector });
+//         });
+//       return out;
+//     });
+
+//     // clean up
+//     await scanContext.close();
+//     scanContext = null;
+
+//     return elements;
+//   }
+// );
+// 1) Open a headed window and navigate so the user can log in
+ipcMain.handle(
+  'page:open-scan-session',
+  async (_evt, url: string) => {
+    // close any existing session
+    if (captureWindow && !captureWindow.isDestroyed()) {
+      captureWindow.close();
+      captureWindow = null;
+    }
+    captureWindow = new BrowserWindow({
+      webPreferences: {
+        preload: path.join(__dirname, 'preload.js'),
+        devTools: true,
+      },
+    });
+    await captureWindow.loadURL(url);
+    // leave it open for the user to log in
+  }
+);
+
+// 2) Once they're on the right page, extract the DOM for locator names/selectors
+ipcMain.handle(
+  'page:extract-locators',
+  async () => {
+    if (!captureWindow || captureWindow.isDestroyed()) {
+      throw new Error('Scan session not started. Click “Open & Log In” first.');
+    }
+    const wc = captureWindow.webContents;
+    // Grab all buttons, links, inputs, etc.
+    const elements = await wc.executeJavaScript(`(() => {
+      const out = [];
+      const nodes = Array.from(document.querySelectorAll(
+        'a, button, input, textarea, select, [role=button], [role=link]'
+      ));
+      for (const el of nodes) {
+        let name =
+          el.getAttribute('aria-label') ||
+          el.getAttribute('alt') ||
+          el.getAttribute('title') ||
+          (el.textContent || '').trim().slice(0, 50) ||
+          (el.placeholder || '') ||
+          el.id ||
+          el.tagName.toLowerCase();
+        name = name
+          .replace(/[^a-zA-Z0-9]+/g, '_')
+          .replace(/^_+|_+$/g, '')
+          .toLowerCase() || el.tagName.toLowerCase();
+        let selector = '';
+        if (el.id) {
+          selector = '#' + el.id;
+        } else if (el.tagName && el.className) {
+          const classes = el.className.toString().trim().split(/\\s+/).join('.');
+          selector = el.tagName.toLowerCase() + (classes ? '.' + classes : '');
+        } else {
+          selector = el.tagName.toLowerCase();
+        }
+        out.push({ name, selector });
+      }
+      return out;
+    })()`);
+    return elements as Array<{ name: string; selector: string }>;
+  }
+);
+
+
+ipcMain.handle(
+  'capture-element',
+  async (_evt, projectDir: string, pageName: string, locatorKey: string) => {
+    // 1) load your meta so you can look up the CSS selector
+    const meta = await loadProjectMeta(projectDir);
+    const pageObj = meta.pages.find((p:any) => p.name === pageName);
+    if (!pageObj) throw new Error(`Page "${pageName}" not found in meta`);
+    const selector = pageObj.selectors[locatorKey];
+    if (!selector) throw new Error(`Locator "${locatorKey}" not found on page "${pageName}"`);
+
+    // 2) find your existing BrowserWindow (the one you opened & logged into)
+    const win = scanSessions.get(projectDir);
+    if (!win || win.isDestroyed()) {
+      throw new Error('Scan session not started or was closed. Click “Open & Log In” first.');
+    }
+
+    // 3) grab the element’s bounding box via eval in that window
+    const rect: [
+      number, // x
+      number, // y
+      number, // width
+      number  // height
+    ] = await win.webContents.executeJavaScript(`
+      (()=>{
+        const el = document.querySelector(\`${selector}\`);
+        if (!el) throw new Error('No element found for selector: ${selector}');
+        const r = el.getBoundingClientRect();
+        return [r.x, r.y, r.width, r.height];
+      })()
+    `);
+
+    // 4) capture just that region
+    const image = await win.webContents.capturePage({
+      x: Math.round(rect[0]),
+      y: Math.round(rect[1]),
+      width: Math.round(rect[2]),
+      height: Math.round(rect[3]),
+    });
+
+    // 5) return a base64‐encoded PNG
+    return image.toPNG().toString('base64');
+  }
+);
 app.whenReady().then(async () => {
   // 1) Make sure the folder is there
   await ensureProjectsDir();
@@ -769,14 +987,7 @@ async function loadProjectMeta(projectDir: string) {
   const metaPath = path.join(projectDir, 'nca-config.json');
   const raw = await fs.readFile(metaPath, 'utf8');
   const meta = JSON.parse(raw) as any;
-  return meta as { integrations?: {
-    jiraBaseUrl?: string;
-    jiraEmail?: string;
-    jiraToken?: string;
-    azureOrgUrl?: string;
-    azurePAT?: string;
-    azureProject?: string;
-  } };
+  return meta ;
 }
 // Recursively extract all text from an ADF node tree
 function extractADFText(nodes: any[]): string {

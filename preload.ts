@@ -66,6 +66,19 @@ contextBridge.exposeInMainWorld('api', {
       azureListWorkItems:(projectDir: string) => ipcRenderer.invoke('azure:listWorkItems', projectDir),
       scanPage: (projectDir: string, pageName: string, url: string) =>
         ipcRenderer.invoke('page:scan', projectDir, pageName, url),
-      
+      // openScanSession: (projectDir: string, pageName: string, url: string) =>
+      //   ipcRenderer.invoke('page:open-scan-session', projectDir, pageName, url),
+      // extractLocators: (projectDir: string, pageName: string) =>
+      //   ipcRenderer.invoke('page:extract-locators', projectDir, pageName),
+      // 1) open a headed session so the user can log in
+  openScanSession: (url: string) =>
+    ipcRenderer.invoke('page:open-scan-session', url),
+
+  // 2) once logged in, extract locators from that live window
+  extractLocators: () =>
+    ipcRenderer.invoke('page:extract-locators'),
+  captureElement: (pageName: string, locatorKey: string): Promise<string> =>
+    ipcRenderer.invoke('capture-element', __projectDir, pageName, locatorKey),
 });
+// If you want the little toolbar injected into every loaded page:
 
