@@ -1,6 +1,7 @@
 import os from 'os';
-import { app, BrowserWindow, ipcMain, shell,dialog } from 'electron';
+import { app, BrowserWindow, ipcMain, shell,dialog,Menu } from 'electron';
 let captureWindow: BrowserWindow | null = null;
+let consoleWindow: BrowserWindow | null = null;
 // Extend globalThis to include custom properties
 declare global {
   var __scanBrowser: import('playwright').Browser | undefined;
@@ -48,7 +49,7 @@ async function createWindow() {
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
     }
   });
 
@@ -58,8 +59,17 @@ async function createWindow() {
   } else {
     await mainWindow.loadFile(path.join(__dirname, '..', 'renderer', 'dist', 'index.html'));
   }
-  mainWindow.webContents.openDevTools({ mode: 'detach' });
+  //mainWindow.webContents.openDevTools({ mode: 'detach' });
 }
+
+// replace your old “auto start console” logic with this:
+ipcMain.handle('open-console-window', (_evt) => {
+ 
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    // open in a detached window (you can also use 'bottom', 'right' etc.)
+    mainWindow.webContents.openDevTools({ mode: 'detach' });
+  }
+})
 
 ipcMain.handle('project:create', async (_evt, { basePath, projectName }) => {
   const projectDir = path.join(basePath, projectName);
@@ -396,55 +406,6 @@ ipcMain.handle(
   }
 );
 
-/** 2) Jira description fetch */
-// ipcMain.handle('jira:fetchDescription', async (_evt, ticketId: string) => {
-//   const { JIRA_BASE_URL, JIRA_EMAIL, JIRA_API_TOKEN } = process.env;
-//   if (!JIRA_BASE_URL || !JIRA_EMAIL || !JIRA_API_TOKEN) {
-//     throw new Error('Missing JIRA_BASE_URL, JIRA_EMAIL or JIRA_API_TOKEN in env');
-//   }
-//   const url = `${JIRA_BASE_URL}/rest/api/3/issue/${encodeURIComponent(ticketId)}?fields=description`;
-//   const auth = Buffer.from(`${JIRA_EMAIL}:${JIRA_API_TOKEN}`).toString('base64');
-//   const res = await fetch(url, {
-//     headers: {
-//       'Authorization': `Basic ${auth}`,
-//       'Accept': 'application/json',
-//     },
-//   });
-//   if (!res.ok) throw new Error(`Jira API returned ${res.status}`);
-//   const data = await res.json() as any;
-//   // Convert ADF → plain text
-//   const content = data.fields.description?.content || [];
-//   let text = '';
-//   for (const block of content) {
-//     for (const inner of block.content || []) {
-//       text += inner.text || '';
-//     }
-//     text += '\n\n';
-//   }
-//   return text.trim();
-// });
-
-// /** 3) Azure DevOps description fetch */
-// ipcMain.handle('azure:fetchDescription', async (_evt, workItemId: string) => {
-//   const { AZURE_DEVOPS_ORG_URL, AZURE_DEVOPS_PAT } = process.env;
-//   if (!AZURE_DEVOPS_ORG_URL || !AZURE_DEVOPS_PAT) {
-//     throw new Error('Missing AZURE_DEVOPS_ORG_URL or AZURE_DEVOPS_PAT in env');
-//   }
-//   const url = `${AZURE_DEVOPS_ORG_URL}/_apis/wit/workitems/${encodeURIComponent(workItemId)}?api-version=6.0&$expand=fields`;
-//   const auth = Buffer.from(`:${AZURE_DEVOPS_PAT}`).toString('base64');
-//   const res = await fetch(url, {
-//     headers: {
-//       'Authorization': `Basic ${auth}`,
-//       'Accept': 'application/json',
-//     },
-//   });
-//   if (!res.ok) throw new Error(`Azure DevOps API returned ${res.status}`);
-//   const data = await res.json() as any;
-//   const html = data.fields['System.Description'] || '';
-//   // strip HTML tags
-//   const text = html.replace(/<[^>]+>/g, '');
-//   return text.trim();
-// });
 
 
 /** Jira description fetch */
@@ -657,109 +618,7 @@ ipcMain.handle(
   }
 );
  
-// ipcMain.handle(
-//   'page:open-scan-session',
-//   async (_evt, projectDir: string, url: string) => {
-//     // launch a persistent, headed context so login sticks
-//     const userDataDir = path.join(projectDir, 'playwright-user-data');
-//     scanContext = await chromium.launchPersistentContext(userDataDir, {
-//       headless: false,
-//       viewport: { width: 1280, height: 800 },
-//     });
 
-//     const page = scanContext.pages()[0] || await scanContext.newPage();
-//     await page.goto(url, { waitUntil: 'domcontentloaded' });
-
-//     // inform the user to log in
-//     await dialog.showMessageBox({
-//       type: 'info',
-//       buttons: ['OK'],
-//       title: 'Log In',
-//       message: 'The browser is open. Please log in, then click “Extract Locators” in the app.',
-//     });
-
-//     return true;
-//   }
-// );
-
-// ipcMain.handle(
-//   'page:open-scan-session',
-//   async (_evt, projectDir: string, pageName: string, rawUrl: string) => {
-//     let url = rawUrl.trim();
-//     if (!/^https?:\/\//i.test(url)) {
-//       url = 'https://' + url;
-//     }
-
-//     // launch a headed browser so user can log in
-//     const browser = await chromium.launch({ headless: false });
-//     const page = await browser.newPage();
-
-//     // store these globally so your extract-locators handler can re-use the same context
-//     globalThis.__scanBrowser = browser;
-//     globalThis.__scanPage    = page;
-//     globalThis.__scanPageName = pageName;
-//     globalThis.__projectDir   = projectDir;
-
-//     await page.goto(url, { waitUntil: 'domcontentloaded' });
-//     return;
-//   }
-// );
-// ipcMain.handle(
-//   'page:extract-locators',
-//   async (_evt, projectDir: string, pageName: string) => {
-//     if (!scanContext) {
-//       throw new Error('Scan session not started. Click “Open & Log In” first.');
-//     }
-//     const page = scanContext.pages()[0];
-//     if (!page) throw new Error('No open page in scan session.');
-
-//     // pull out elements
-//     const elements = await page.evaluate(() => {
-//       type Out = { name: string; selector: string };
-//       const out: Out[] = [];
-//       document
-//         .querySelectorAll('a, button, input, textarea, select, [role=button], [role=link]')
-//         .forEach((el) => {
-//           let name =
-//             el.getAttribute('aria-label') ||
-//             el.getAttribute('alt') ||
-//             el.getAttribute('title') ||
-//             (el.textContent || '').trim().slice(0, 50) ||
-//             (el as HTMLInputElement).placeholder ||
-//             el.id ||
-//             el.tagName.toLowerCase();
-//           name = name
-//             .replace(/[^a-zA-Z0-9]+/g, '_')
-//             .replace(/^_+|_+$/g, '')
-//             .toLowerCase() || el.tagName.toLowerCase();
-
-//           let selector = '';
-//           if (el.id) {
-//             selector = `#${el.id}`;
-//           } else if ((el as any).className) {
-//             const classes = (el as any)
-//               .className
-//               .toString()
-//               .trim()
-//               .split(/\s+/)
-//               .join('.');
-//             selector = `${el.tagName.toLowerCase()}${classes ? '.' + classes : ''}`;
-//           } else {
-//             selector = el.tagName.toLowerCase();
-//           }
-//           out.push({ name, selector });
-//         });
-//       return out;
-//     });
-
-//     // clean up
-//     await scanContext.close();
-//     scanContext = null;
-
-//     return elements;
-//   }
-// );
-// 1) Open a headed window and navigate so the user can log in
 ipcMain.handle(
   'page:open-scan-session',
   async (_evt, url: string) => {
@@ -769,102 +628,168 @@ ipcMain.handle(
       captureWindow = null;
     }
     captureWindow = new BrowserWindow({
+      width: 1200,
+      height: 800, 
       webPreferences: {
         preload: path.join(__dirname, 'preload.js'),
         devTools: true,
+        contextIsolation: true,
+      nodeIntegration: false,
       },
     });
+    // once the page is loaded, open DevTools and install a right-click menu
+  captureWindow.webContents.on('did-finish-load', () => {
+    // 1️⃣ open the DevTools docked on the bottom
+    captureWindow!.webContents.openDevTools({ mode: 'bottom' });
+
+    // 2️⃣ hook up a context menu so “Inspect Element” is available on right-click
+    captureWindow!.webContents.on(
+      'context-menu',
+      (_event, params) => {
+        const menu = Menu.buildFromTemplate([
+          {
+            label: 'Inspect Element',
+            click: () => {
+              // params.x/y are the click coordinates within the window
+              captureWindow!.webContents.inspectElement(params.x, params.y);
+            }
+          },
+          { type: 'separator' },
+          { role: 'reload' },
+          { role: 'toggleDevTools' }
+        ]);
+        menu.popup({ window: captureWindow! });
+      }
+    );
+  });
     await captureWindow.loadURL(url);
     // leave it open for the user to log in
   }
 );
 
-// 2) Once they're on the right page, extract the DOM for locator names/selectors
-ipcMain.handle(
-  'page:extract-locators',
-  async () => {
-    if (!captureWindow || captureWindow.isDestroyed()) {
-      throw new Error('Scan session not started. Click “Open & Log In” first.');
-    }
-    const wc = captureWindow.webContents;
-    // Grab all buttons, links, inputs, etc.
-    const elements = await wc.executeJavaScript(`(() => {
-      const out = [];
-      const nodes = Array.from(document.querySelectorAll(
-        'a, button, input, textarea, select, [role=button], [role=link]'
-      ));
-      for (const el of nodes) {
-        let name =
-          el.getAttribute('aria-label') ||
-          el.getAttribute('alt') ||
-          el.getAttribute('title') ||
-          (el.textContent || '').trim().slice(0, 50) ||
-          (el.placeholder || '') ||
-          el.id ||
-          el.tagName.toLowerCase();
-        name = name
-          .replace(/[^a-zA-Z0-9]+/g, '_')
-          .replace(/^_+|_+$/g, '')
-          .toLowerCase() || el.tagName.toLowerCase();
-        let selector = '';
-        if (el.id) {
-          selector = '#' + el.id;
-        } else if (el.tagName && el.className) {
-          const classes = el.className.toString().trim().split(/\\s+/).join('.');
-          selector = el.tagName.toLowerCase() + (classes ? '.' + classes : '');
-        } else {
-          selector = el.tagName.toLowerCase();
-        }
-        out.push({ name, selector });
-      }
-      return out;
-    })()`);
-    return elements as Array<{ name: string; selector: string }>;
+
+ipcMain.handle('page:extract-locators', async () => {
+  if (!captureWindow || captureWindow.isDestroyed()) {
+    throw new Error('Scan session not started. Click “Open & Log In” first.');
   }
-);
+  const wc = captureWindow.webContents;
+  const elements = await wc.executeJavaScript(`(() => {
+    // builds an XPath fallback if needed
+    function getXPath(el) {
+      if (el.id) return 'id("' + el.id + '")';
+      const parts = [];
+      while (el && el.nodeType === Node.ELEMENT_NODE) {
+        let count = 0, sib = el;
+        while (sib) {
+          if (sib.nodeType === Node.ELEMENT_NODE && sib.nodeName === el.nodeName) {
+            count++;
+          }
+          sib = sib.previousElementSibling;
+        }
+        parts.unshift(el.nodeName.toLowerCase() + '[' + count + ']');
+        el = el.parentNode;
+      }
+      return '/' + parts.join('/');
+    }
+
+    const out = [];
+    const nodes = Array.from(document.querySelectorAll(
+      'a, button, input, textarea, select, [role=button], [role=link]'
+    ));
+    for (const el of nodes) {
+      const tag = el.tagName.toLowerCase();
+      let prefix = '';
+      if (tag === 'input') {
+        const t = el.getAttribute('type') || 'text';
+        if (t === 'checkbox') prefix = 'checkbox_';
+        else if (t === 'radio') prefix = 'radio_';
+        else prefix = 'text_';
+      } else if (tag === 'textarea') {
+        prefix = 'text_';
+      } else if (tag === 'button') {
+        prefix = 'button_';
+      } else if (tag === 'a' || el.getAttribute('role') === 'link') {
+        prefix = 'link_';
+      } else if (/^h[1-6]$/.test(tag)) {
+        prefix = 'heading_' + tag + '_';
+      } else if (tag === 'select') {
+        prefix = 'select_';
+      } else {
+        prefix = tag + '_';
+      }
+
+      let base =
+        el.getAttribute('aria-label') ||
+        el.getAttribute('alt') ||
+        el.getAttribute('title') ||
+        (el.textContent || '').trim().slice(0, 50) ||
+        el.getAttribute('placeholder') ||
+        el.id ||
+        el.getAttribute('name') ||
+        '';
+      base = base
+        .replace(/[^a-zA-Z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '')
+        .toLowerCase();
+      if (!base) base = tag;
+      const name = prefix + base;
+
+      // stable selector
+      let selector = '';
+      if (el.id) {
+        selector = '#' + el.id;
+      } else if (el.getAttribute('name')) {
+        selector = el.tagName.toLowerCase() +
+          '[name="' + el.getAttribute('name') + '"]';
+      } else if (el.classList.length > 0) {
+        selector = el.tagName.toLowerCase() +
+          '.' + Array.from(el.classList).join('.');
+      } else {
+        selector = 'xpath:' + getXPath(el);
+      }
+
+      out.push({ name, selector });
+    }
+    return out;
+  })()`);
+  return elements as Array<{ name: string; selector: string }>;
+});
 
 
+// IPC handler to capture a specific element by locator key
 ipcMain.handle(
   'capture-element',
-  async (_evt, projectDir: string, pageName: string, locatorKey: string) => {
-    // 1) load your meta so you can look up the CSS selector
+  async (_evt, projectDir: string, locatorKey: string) => {
+    if (!captureWindow || captureWindow.isDestroyed())
+      throw new Error('Scan session not started.');
+
     const meta = await loadProjectMeta(projectDir);
-    const pageObj = meta.pages.find((p:any) => p.name === pageName);
-    if (!pageObj) throw new Error(`Page "${pageName}" not found in meta`);
-    const selector = pageObj.selectors[locatorKey];
-    if (!selector) throw new Error(`Locator "${locatorKey}" not found on page "${pageName}"`);
+    const found = meta.pages
+      .flatMap((p: { selectors: { [s: string]: unknown; } | ArrayLike<unknown>; }) =>
+        Object.entries(p.selectors).map(([k, s]) => ({ key: k, selector: s as string }))
+      )
+      .find((x: { key: string; }) => x.key === locatorKey);
+    if (!found) throw new Error(`Locator "${locatorKey}" not in meta`);
 
-    // 2) find your existing BrowserWindow (the one you opened & logged into)
-    const win = scanSessions.get(projectDir);
-    if (!win || win.isDestroyed()) {
-      throw new Error('Scan session not started or was closed. Click “Open & Log In” first.');
-    }
-
-    // 3) grab the element’s bounding box via eval in that window
-    const rect: [
-      number, // x
-      number, // y
-      number, // width
-      number  // height
-    ] = await win.webContents.executeJavaScript(`
-      (()=>{
-        const el = document.querySelector(\`${selector}\`);
-        if (!el) throw new Error('No element found for selector: ${selector}');
+    // query the live window
+    const rect = await captureWindow.webContents.executeJavaScript(`
+      (() => {
+        const el = document.querySelector(${JSON.stringify(found.selector)});
+        if (!el) return null;
         const r = el.getBoundingClientRect();
-        return [r.x, r.y, r.width, r.height];
+        return { x: r.x, y: r.y, width: r.width, height: r.height };
       })()
     `);
+    if (!rect) throw new Error(`Element for "${locatorKey}" not found on screen`);
 
-    // 4) capture just that region
-    const image = await win.webContents.capturePage({
-      x: Math.round(rect[0]),
-      y: Math.round(rect[1]),
-      width: Math.round(rect[2]),
-      height: Math.round(rect[3]),
+    // capture just that region
+    const image = await captureWindow.webContents.capturePage({
+      x: Math.floor(rect.x),
+      y: Math.floor(rect.y),
+      width: Math.ceil(rect.width),
+      height: Math.ceil(rect.height),
     });
-
-    // 5) return a base64‐encoded PNG
-    return image.toPNG().toString('base64');
+    return image.toDataURL();
   }
 );
 app.whenReady().then(async () => {
@@ -932,21 +857,7 @@ function findSpecFile(projectDir: string, suiteName: string): string {
   return path.join(testsDir, match);
 }
 
-// async function runPlaywright(
-//   projectDir: string,
-//   args: string[]
-// ): Promise<{ passed: boolean; output: string }> {
-//   return new Promise((resolve) => {
-//     const cp = spawn('npx', ['playwright', 'test', ...args], {
-//       cwd: projectDir,
-//       shell: true,
-//     });
-//     let output = '';
-//     cp.stdout.on('data', (d) => (output += d.toString()));
-//     cp.stderr.on('data', (d) => (output += d.toString()));
-//     cp.on('close', (code) => resolve({ passed: code === 0, output }));
-//   });
-// }
+
 function runPlaywright(
   cwd: string,
   args: string[]

@@ -21,7 +21,7 @@ contextBridge.exposeInMainWorld('api', {
     caseCode: string;
   }) => ipcRenderer.invoke('case:add', opts),
   getFileTree: (projectDir: string) =>
-  ipcRenderer.invoke('fs:tree', projectDir),
+    ipcRenderer.invoke('fs:tree', projectDir),
   listProjects: () => ipcRenderer.invoke('projects:list'),
   getRootProjectsDir: () => ipcRenderer.invoke('projects:getRoot'),
   loadMeta: (projectDir: string) =>
@@ -29,56 +29,55 @@ contextBridge.exposeInMainWorld('api', {
   saveMeta: (projectDir: string, meta: any) =>
     ipcRenderer.invoke('meta:save', projectDir, meta),
   // ← new:
-  pathExists:   (p: string) => ipcRenderer.invoke('path-exists', p),
-  deletePath:   (p: string) => ipcRenderer.invoke('delete-path', p),
+  pathExists: (p: string) => ipcRenderer.invoke('path-exists', p),
+  deletePath: (p: string) => ipcRenderer.invoke('delete-path', p),
   runTestCase: (
-        projectDir: string,
-        suiteName: string,
-        caseName: string,
-        headless: boolean,        // ← new
-        browsers: string[]        // ← new
-      ) => ipcRenderer.invoke(
-        'run:testcase',
-        projectDir,
-        suiteName,
-        caseName,
-        headless,                 // ← new
-        browsers                  // ← new
-      ),
-    runSuite: (
-        projectDir: string,
-        suiteName: string,
-        headless: boolean,        // ← new
-        browsers: string[]        // ← new
-      ) => ipcRenderer.invoke(
-        'run:suite',
-        projectDir,
-        suiteName,
-        headless,                 // ← new
-        browsers                  // ← new
-      ),
-      
-      generateReport: (dir: string) => ipcRenderer.invoke('generateReport', dir),
-      clearReports:   (dir: string) => ipcRenderer.invoke('clearReports', dir),
-      fetchJiraDescription:  (projectDir: string, ticketId: string) => ipcRenderer.invoke('jira:fetchDescription', projectDir, ticketId),
-      fetchAzureDescription: (projectDir: string, workItemId: string) => ipcRenderer.invoke('azure:fetchDescription',  projectDir, workItemId),
-      jiraListIssues:    (projectDir: string) => ipcRenderer.invoke('jira:listIssues', projectDir),
-      azureListWorkItems:(projectDir: string) => ipcRenderer.invoke('azure:listWorkItems', projectDir),
-      scanPage: (projectDir: string, pageName: string, url: string) =>
-        ipcRenderer.invoke('page:scan', projectDir, pageName, url),
-      // openScanSession: (projectDir: string, pageName: string, url: string) =>
-      //   ipcRenderer.invoke('page:open-scan-session', projectDir, pageName, url),
-      // extractLocators: (projectDir: string, pageName: string) =>
-      //   ipcRenderer.invoke('page:extract-locators', projectDir, pageName),
-      // 1) open a headed session so the user can log in
+    projectDir: string,
+    suiteName: string,
+    caseName: string,
+    headless: boolean,        // ← new
+    browsers: string[]        // ← new
+  ) => ipcRenderer.invoke(
+    'run:testcase',
+    projectDir,
+    suiteName,
+    caseName,
+    headless,                 // ← new
+    browsers                  // ← new
+  ),
+  runSuite: (
+    projectDir: string,
+    suiteName: string,
+    headless: boolean,        // ← new
+    browsers: string[]        // ← new
+  ) => ipcRenderer.invoke(
+    'run:suite',
+    projectDir,
+    suiteName,
+    headless,                 // ← new
+    browsers                  // ← new
+  ),
+
+  generateReport: (dir: string) => ipcRenderer.invoke('generateReport', dir),
+  clearReports: (dir: string) => ipcRenderer.invoke('clearReports', dir),
+  fetchJiraDescription: (projectDir: string, ticketId: string) => ipcRenderer.invoke('jira:fetchDescription', projectDir, ticketId),
+  fetchAzureDescription: (projectDir: string, workItemId: string) => ipcRenderer.invoke('azure:fetchDescription', projectDir, workItemId),
+  jiraListIssues: (projectDir: string) => ipcRenderer.invoke('jira:listIssues', projectDir),
+  azureListWorkItems: (projectDir: string) => ipcRenderer.invoke('azure:listWorkItems', projectDir),
+  scanPage: (projectDir: string, pageName: string, url: string) =>
+    ipcRenderer.invoke('page:scan', projectDir, pageName, url),
+
   openScanSession: (url: string) =>
     ipcRenderer.invoke('page:open-scan-session', url),
 
   // 2) once logged in, extract locators from that live window
   extractLocators: () =>
     ipcRenderer.invoke('page:extract-locators'),
-  captureElement: (pageName: string, locatorKey: string): Promise<string> =>
-    ipcRenderer.invoke('capture-element', __projectDir, pageName, locatorKey),
+  captureElement: (projectDir: string, locatorKey: string) =>
+    ipcRenderer.invoke('capture-element', projectDir, locatorKey),
+  openConsoleWindow: () => ipcRenderer.invoke('open-console-window'),
 });
 // If you want the little toolbar injected into every loaded page:
+
+
 

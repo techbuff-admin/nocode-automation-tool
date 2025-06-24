@@ -11,6 +11,7 @@ export default defineConfig({
     outDir: path.resolve(__dirname, 'dist'),
     emptyOutDir: true,
     sourcemap: true,         // optional, but helpful in Electron
+    chunkSizeWarningLimit: 1000, // in KB, default is 500
   },
   server: {
     port: 5173,

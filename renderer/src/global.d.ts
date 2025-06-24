@@ -28,7 +28,7 @@ declare global {
       listProjects(): Promise<{name:string;path:string}[]>;
       getRootProjectsDir(): Promise<string>;
       createSuite(args: { projectDir: string; suiteName: string }): Promise<string>;
-      captureElement: (selector: string,projectDir, pageName, locatorKey) => Promise<string>; // returns data‐URL
+      captureElement: (projectDir:string,locatorKey: string) => Promise<string>;
     };
   }
 }
