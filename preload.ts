@@ -76,6 +76,8 @@ contextBridge.exposeInMainWorld('api', {
   captureElement: (projectDir: string, locatorKey: string) =>
     ipcRenderer.invoke('capture-element', projectDir, locatorKey),
   openConsoleWindow: () => ipcRenderer.invoke('open-console-window'),
+  openReportWindow: (projectDir: string) =>
+    ipcRenderer.invoke('open-report-window', projectDir),
 });
 // If you want the little toolbar injected into every loaded page:
 

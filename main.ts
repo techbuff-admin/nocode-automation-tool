@@ -62,6 +62,21 @@ async function createWindow() {
   //mainWindow.webContents.openDevTools({ mode: 'detach' });
 }
 
+ipcMain.handle('open-report-window', async (_evt, projectDir: string) => {
+  // Create a new window for the report
+  const reportWindow = new BrowserWindow({
+    width: 1200,
+    height: 800,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      devTools: true,
+    },
+  });
+
+  // Load the Allure report index.html
+  const reportPath = `file://${path.join(projectDir, 'allure-report', 'index.html')}`;
+  await reportWindow.loadURL(reportPath);
+});
 // replace your old “auto start console” logic with this:
 ipcMain.handle('open-console-window', (_evt) => {
  
@@ -390,10 +405,22 @@ ipcMain.handle('generateReport', async (_evt, projectDir: string) => {
   );
 
   // 2) open it in the browser
-  await execAsync(
-    `npx allure open "${reportDir}"`,
-    { cwd: projectDir }
-  );
+  // await execAsync(
+  //   `npx allure open "${reportDir}"`,
+  //   { cwd: projectDir }
+  // );
+  const reportWindow = new BrowserWindow({
+    width: 1200,
+    height: 800,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      devTools: true,
+    },
+  });
+
+  // Load the Allure report index.html
+  const reportPath = `file://${path.join(projectDir, 'allure-report', 'index.html')}`;
+  await reportWindow.loadURL(reportPath);
 });
 // ← new: clear both folders
 ipcMain.handle(
