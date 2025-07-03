@@ -7,10 +7,11 @@ declare global {
     api: {
       [x: string]: any;
       systemCheck(): Promise<{
-        name: 'playwright' | 'java' | 'allure';
+        name: 'playwright' | 'java' | 'allure' | 'msedge';
         display: string;
         installed: boolean;
         version?: string;
+        latestVersion?:string
       }[]>;
       
       /** Creates a Playwright project; returns the project path */

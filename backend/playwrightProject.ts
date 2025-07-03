@@ -39,6 +39,18 @@ export function createProject({ baseDir }: { baseDir: string }) {
     `import { defineConfig } from '@playwright/test';
 export default defineConfig({
   reporter: [['list']],
+  projects: [
+    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+    { name: 'firefox',  use: { ...devices['Desktop Firefox'] } },
+    { name: 'webkit',   use: { ...devices['Desktop Safari'] } },
+    {
+      name: 'msedge',
+      use: {
+        ...devices['Desktop Edge'],
+        channel: 'msedge'
+      }
+    }
+  ],
 });\n`,
     'utf8'
   );

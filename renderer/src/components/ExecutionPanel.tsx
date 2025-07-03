@@ -28,42 +28,42 @@ interface SuiteSel extends CaseSel {
 
 export default function ExecutionPanel({ onBack }: { onBack: () => void }) {
   const { projectDir } = useContext(ProjectContext);
-  const [meta, setMeta] = useState<ProjectMeta|null>(null);
-  const [sel, setSel] = useState<Record<string,SuiteSel>>({});
-  const [openSuites, setOpenSuites] = useState<Record<string,boolean>>({});
+  const [meta, setMeta] = useState<ProjectMeta | null>(null);
+  const [sel, setSel] = useState<Record<string, SuiteSel>>({});
+  const [openSuites, setOpenSuites] = useState<Record<string, boolean>>({});
   const [running, setRunning] = useState(false);
   const [generatingReport, setGeneratingReport] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [isHeadless, setIsHeadless] = useState(true);
 
-  // load metadata & initialize all checkboxes unchecked
+  // 1) Load metadata & initialize all checkboxes unchecked (but preserve tags)
   useEffect(() => {
     if (!projectDir) return;
     window.api.loadMeta(projectDir).then(m => {
       setMeta(m);
-      const initial: Record<string,SuiteSel> = {};
-      const opens: Record<string,boolean> = {};
+      const initial: Record<string, SuiteSel> = {};
+      const opens: Record<string, boolean> = {};
       m.suites.forEach((suite: TestSuite) => {
-        const defaultBrows: Record<BrowserName,boolean> = {
-          edge: false,
+        const defaultBrows: Record<BrowserName, boolean> = {
+          edge:   false,
           firefox: false,
-          safari: false,
-          chrome: false,
+          safari:  false,
+          chrome:  false,
         };
-        const cases: Record<string,CaseSel> = {};
+        const cases: Record<string, CaseSel> = {};
         suite.cases.forEach((c: TestCase) => {
           const tags = Array.isArray(c.tags) ? c.tags : [];
           cases[c.name] = {
-            selected: false,
-            browsers: { ...defaultBrows },
-            smoke: tags.includes('smoke'),
+            selected:   false,
+            browsers:   { ...defaultBrows },
+            smoke:      tags.includes('smoke'),
             regression: tags.includes('regression'),
           };
         });
         initial[suite.name] = {
-          selected: false,
-          browsers: { ...defaultBrows },
-          smoke: false,
+          selected:   false,
+          browsers:   { ...defaultBrows },
+          smoke:      false,
           regression: false,
           cases,
         };
@@ -78,11 +78,9 @@ export default function ExecutionPanel({ onBack }: { onBack: () => void }) {
   if (Object.keys(sel).length !== meta.suites.length) return <p>Initializing…</p>;
 
   // whether any suite or case is selected
-  const hasAnySelected = Object.values(sel).some(suite =>
-    suite.selected ||
-    Object.values(suite.cases).some(c => c.selected)
+  const hasAnySelected = Object.values(sel).some(s =>
+    s.selected || Object.values(s.cases).some(c => c.selected)
   );
-
   const anySmoke = Object.values(sel).some(s =>
     Object.values(s.cases).some(c => c.smoke)
   );
@@ -97,27 +95,22 @@ export default function ExecutionPanel({ onBack }: { onBack: () => void }) {
     finally { setRunning(false); }
   }
 
-  // Execute Selected with “run all” fallback
+  // 2) Execute Selected (with fallback)
   const handleExecuteSelected = () => {
     if (!projectDir || !meta) return;
     const tasks: Promise<any>[] = [];
 
     Object.entries(sel).forEach(([suiteName, S]) => {
       if (S.selected) {
-        const chosen = BROWSERS.filter(b => S.browsers[b]);
-        //const runOn = chosen.length ? chosen : ['chrome'];
-        const runOn = chosen;
+        const runOn = BROWSERS.filter(b => S.browsers[b]);
         runOn.forEach(b =>
-          tasks.push(
-            window.api.runSuite(projectDir, suiteName, isHeadless, [b])
-          )
+          tasks.push(window.api.runSuite(projectDir, suiteName, isHeadless, [b]))
         );
       }
       Object.entries(S.cases).forEach(([caseName, C]) => {
         if (C.selected) {
-          const chosen = BROWSERS.filter(b => C.browsers[b]);
-          const runOn = chosen.length ? chosen : ['chrome'];
-          runOn.forEach(b =>
+          const runOn = BROWSERS.filter(b => C.browsers[b]);
+          (runOn.length ? runOn : ['chrome']).forEach(b =>
             tasks.push(
               window.api.runTestCase(
                 projectDir,
@@ -132,7 +125,7 @@ export default function ExecutionPanel({ onBack }: { onBack: () => void }) {
       });
     });
 
-    // fallback: if absolutely nothing checked, run every suite once in Chrome
+    // fallback: if nothing explicitly selected, run each suite once on Chrome
     if (tasks.length === 0) {
       meta.suites.forEach(suite => {
         tasks.push(
@@ -144,59 +137,66 @@ export default function ExecutionPanel({ onBack }: { onBack: () => void }) {
     runParallel(tasks);
   };
 
-  // Execute Smoke
+  // 3) Execute Smoke (with suite‐level fallback)
   const handleExecuteSmoke = () => {
     if (!projectDir) return;
     const tasks: Promise<any>[] = [];
     Object.entries(sel).forEach(([suiteName, S]) => {
       Object.entries(S.cases).forEach(([caseName, C]) => {
-        if (C.smoke) {
-          const chosen = BROWSERS.filter(b => C.browsers[b]);
-          const runOn = chosen.length ? chosen : ['chrome'];
-          runOn.forEach(b =>
-            tasks.push(
-              window.api.runTestCase(
-                projectDir,
-                suiteName,
-                caseName,
-                isHeadless,
-                [b]
-              )
-            )
-          );
+        if (!C.smoke) return;
+        // 1. case‐level picks
+        let runOn = BROWSERS.filter(b => C.browsers[b]);
+        // 2. fallback to suite‐level picks if none
+        if (!runOn.length) {
+          runOn = BROWSERS.filter(b => S.browsers[b]);
         }
+        // 3. final fallback to Chrome
+        if (!runOn.length) runOn = ['chrome'];
+        runOn.forEach(b =>
+          tasks.push(
+            window.api.runTestCase(
+              projectDir,
+              suiteName,
+              caseName,
+              isHeadless,
+              [b]
+            )
+          )
+        );
       });
     });
     runParallel(tasks);
   };
 
-  // Execute Regression
+  // 4) Execute Regression (with suite‐level fallback)
   const handleExecuteRegression = () => {
     if (!projectDir) return;
     const tasks: Promise<any>[] = [];
     Object.entries(sel).forEach(([suiteName, S]) => {
       Object.entries(S.cases).forEach(([caseName, C]) => {
-        if (C.regression) {
-          const chosen = BROWSERS.filter(b => C.browsers[b]);
-          const runOn = chosen.length ? chosen : ['chrome'];
-          runOn.forEach(b =>
-            tasks.push(
-              window.api.runTestCase(
-                projectDir,
-                suiteName,
-                caseName,
-                isHeadless,
-                [b]
-              )
-            )
-          );
+        if (!C.regression) return;
+        let runOn = BROWSERS.filter(b => C.browsers[b]);
+        if (!runOn.length) {
+          runOn = BROWSERS.filter(b => S.browsers[b]);
         }
+        if (!runOn.length) runOn = ['chrome'];
+        runOn.forEach(b =>
+          tasks.push(
+            window.api.runTestCase(
+              projectDir,
+              suiteName,
+              caseName,
+              isHeadless,
+              [b]
+            )
+          )
+        );
       });
     });
     runParallel(tasks);
   };
 
-  // Generate / Clear Reports
+  // 5) Generate / Clear Reports
   const handleGenerateReport = async () => {
     if (!projectDir) return;
     setGeneratingReport(true);
@@ -244,11 +244,11 @@ export default function ExecutionPanel({ onBack }: { onBack: () => void }) {
             C = S.cases[caseName],
             nv = !C[field],
             newCases = { ...S.cases, [caseName]: { ...C, [field]: nv } },
-            agg: (keyof CaseSel)[] = ['selected','smoke','regression'];
+            aggFields: (keyof CaseSel)[] = ['selected','smoke','regression'];
       const newSuite = {
         ...S,
         cases: newCases,
-        ...(agg.includes(field)
+        ...(aggFields.includes(field)
           ? { [field]: Object.values(newCases).every(c2 => c2[field]) }
           : {}
         ),
@@ -303,12 +303,7 @@ export default function ExecutionPanel({ onBack }: { onBack: () => void }) {
 
         <button
           onClick={handleExecuteSelected}
-          disabled={
-            running ||
-            generatingReport ||
-            clearing ||
-            !hasAnySelected
-          }
+          disabled={!hasAnySelected || running || generatingReport || clearing}
           className="inline-flex items-center px-2 py-1 bg-green-600 hover:bg-green-700 text-white text-sm rounded disabled:opacity-50"
         >
           <PlayIcon className="h-4 w-4 mr-1" />
@@ -339,7 +334,7 @@ export default function ExecutionPanel({ onBack }: { onBack: () => void }) {
 
         <button
           onClick={handleGenerateReport}
-          disabled={generatingReport || running || clearing}
+          disabled={running || generatingReport || clearing}
           className="inline-flex items-center px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded disabled:opacity-50"
         >
           <DocumentTextIcon className="h-4 w-4 mr-1" />
@@ -348,7 +343,7 @@ export default function ExecutionPanel({ onBack }: { onBack: () => void }) {
 
         <button
           onClick={handleClearReports}
-          disabled={clearing || running || generatingReport}
+          disabled={running || generatingReport || clearing}
           className="inline-flex items-center px-2 py-1 bg-red-600 hover:bg-red-700 text-white text-sm rounded disabled:opacity-50"
         >
           {clearing ? <Spinner size="sm" /> : <TrashIcon className="h-4 w-4 mr-1" />}
@@ -367,15 +362,14 @@ export default function ExecutionPanel({ onBack }: { onBack: () => void }) {
               onClick={() => toggleSuiteOpen(suite.name)}
             >
               {isOpen
-                ? <ChevronDownIcon className="h-5 w-5 mr-2" />
-                : <ChevronRightIcon className="h-5 w-5 mr-2" />
-              }
+                ? <ChevronDownIcon className="h-5 w-5 mr-2"/>
+                : <ChevronRightIcon className="h-5 w-5 mr-2"/>}
 
               <input
                 type="checkbox"
                 checked={S.selected}
                 onClick={e => e.stopPropagation()}
-                onChange={() => updateSuiteField(suite.name,'selected',true)}
+                onChange={() => updateSuiteField(suite.name,'selected', true)}
               />
               <span className="ml-2 font-semibold">{suite.name}</span>
 
@@ -404,6 +398,7 @@ export default function ExecutionPanel({ onBack }: { onBack: () => void }) {
                       key={tc.name}
                       className="flex items-center p-2 hover:bg-gray-50 rounded"
                     >
+                      {/* per-case selection restored */}
                       <input
                         type="checkbox"
                         checked={C.selected}

@@ -107,13 +107,35 @@ ipcMain.handle('project:create', async (_evt, { basePath, projectName }) => {
   // 4) Write a blank config file
   await fs.writeFile(
     path.join(projectDir, 'playwright.config.ts'),
-    `import { defineConfig } from '@playwright/test';
+    `import { defineConfig,devices} from '@playwright/test';
+    import * as os from "node:os";
 
 export default defineConfig({
   testDir: './tests',
   reporter: [['list'], ['allure-playwright',{
         resultsDir: "allure-results",
+        environmentInfo: {
+        "Automation Platform": "Web",
+        os_platform: os.platform(),
+        os_release: os.release(),
+        os_version: os.version(),
+        node_version: process.version,
+        architecture: os.arch(),
+        hostname: os.hostname(),
+      }
       },]],
+  projects: [
+    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+    { name: 'firefox',  use: { ...devices['Desktop Firefox'] } },
+    { name: 'webkit',   use: { ...devices['Desktop Safari'] } },
+    {
+      name: 'msedge',
+      use: {
+        ...devices['Desktop Edge'],
+        channel: 'msedge'
+      }
+    }
+  ],
 });`
   );
  // 1) Write an initial metadata JSON
@@ -147,8 +169,12 @@ ipcMain.handle('dependency:install', async (_evt, depName: string) => {
     let cmd: string;
     switch (depName) {
       case 'playwright':
-        cmd = 'npm install -g playwright';
+        cmd = 'npm install -g playwright && npx playwright install';
         break;
+      case 'msedge':
+          // install just the Edge channel
+          cmd = 'npx playwright install msedge';
+          break;   
       case 'allure':
         cmd = 'npm install -g allure-commandline';
         break;
@@ -339,9 +365,9 @@ ipcMain.handle(
         const args = [
           spec,
           '--reporter=list,allure-playwright',
-          `--browser=${browser}`,         // e.g. chromium|firefox|webkit|all
+          `--project=${browser}`,         // e.g. chromium|firefox|webkit|all
         ];
-        if (channel) args.push(`--channel=${channel}`); // for edge
+        //if (channel) args.push(`--channel=${channel}`); // for edge
         if (!headless) args.push('--headed');
         return runPlaywright(projectDir, args).then(r => ({ name, ...r }));
       })
@@ -375,7 +401,7 @@ ipcMain.handle(
           spec,
           `--grep=${caseName}`,
           '--reporter=list,allure-playwright',
-          `--browser=${browser}`,
+          `--project=${browser}`,
         ];
         if (channel) args.push(`--channel=${channel}`);
         if (!headless) args.push('--headed');
@@ -907,7 +933,7 @@ function normalizeBrowserFlags(name: string): { browser: string; channel?: strin
     case 'chrome':
       return { browser: 'chromium' };
     case 'edge':
-      return { browser: 'chromium'};
+      return { browser: 'msedge'};
     case 'safari':
       return { browser: 'webkit' };
     case 'firefox':
