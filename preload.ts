@@ -78,6 +78,35 @@ contextBridge.exposeInMainWorld('api', {
   openConsoleWindow: () => ipcRenderer.invoke('open-console-window'),
   openReportWindow: (projectDir: string) =>
     ipcRenderer.invoke('open-report-window', projectDir),
+  
+  loadTestScript: (
+    projectDir: string,
+    suiteName: string,
+    caseName: string
+  ): Promise<string> =>
+    ipcRenderer.invoke(
+      'testscript:load',
+      projectDir,
+      suiteName,
+      caseName
+    ) as Promise<string>,
+
+  /**
+   * Save updated .spec.ts back to disk
+   */
+  saveTestScript: (
+    projectDir: string,
+    suiteName: string,
+    caseName: string,
+    code: string
+  ): Promise<void> =>
+    ipcRenderer.invoke(
+      'testscript:save',
+      projectDir,
+      suiteName,
+      caseName,
+      code
+    ) as Promise<void>,
 });
 // If you want the little toolbar injected into every loaded page:
 

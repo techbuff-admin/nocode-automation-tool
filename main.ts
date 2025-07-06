@@ -845,6 +845,45 @@ ipcMain.handle(
     return image.toDataURL();
   }
 );
+// ipcMain handlers:
+ipcMain.handle(
+  'testscript:load',
+  async (_evt, projectDir: string, suiteName: string, caseName: string) => {
+    const scriptPath = path.join(
+      projectDir,
+      'tests',
+      suiteName,
+      `${caseName}.spec.ts`
+    );
+    try {
+      return await fs.readFile(scriptPath, 'utf-8');
+    } catch (e: any) {
+      throw new Error(`Failed to load script: ${e.message}`);
+    }
+  }
+);
+
+ipcMain.handle(
+  'testscript:save',
+  async (
+    _evt,
+    projectDir: string,
+    suiteName: string,
+    caseName: string,
+    code: string
+  ) => {
+    const dir = path.join(projectDir, 'tests', suiteName);
+    // ensure directory exists
+    await fs.mkdir(dir, { recursive: true });
+    const scriptPath = path.join(dir, `${caseName}.spec.ts`);
+    try {
+      await fs.writeFile(scriptPath, code, 'utf-8');
+      return;
+    } catch (e: any) {
+      throw new Error(`Failed to save script: ${e.message}`);
+    }
+  }
+);
 app.whenReady().then(async () => {
   // 1) Make sure the folder is there
   await ensureProjectsDir();
