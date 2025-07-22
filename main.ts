@@ -405,7 +405,9 @@ ipcMain.handle(
         ];
         if (channel) args.push(`--channel=${channel}`);
         if (!headless) args.push('--headed');
+        console.log("Command", args)
         return runPlaywright(projectDir, args).then(r => ({ name, ...r }));
+      
       })
     );
 
@@ -420,6 +422,7 @@ ipcMain.handle(
 
 
 // ← new: generate & open Allure report in browser
+
 ipcMain.handle('generateReport', async (_evt, projectDir: string) => {
   const resultsDir = path.join(projectDir, 'allure-results');
   const reportDir  = path.join(projectDir, 'allure-report');
@@ -949,13 +952,27 @@ function findSpecFile(projectDir: string, suiteName: string): string {
   return path.join(testsDir, match);
 }
 
+function escapeRegex(str: string) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 
-function runPlaywright(
-  cwd: string,
-  args: string[]
-): Promise<{ passed: boolean; output: string }> {
+// function runPlaywright(
+//   cwd: string,
+//   args: string[]
+// ): Promise<{ passed: boolean; output: string }> {
+//   return new Promise((resolve, reject) => {
+//     const child = spawn('npx', ['playwright', 'test', ...args], { cwd, shell: true });
+//     console.log("NPX ",child)
+//     let out = '';
+//     child.stdout.on('data', d => (out += d.toString()));
+//     child.stderr.on('data', d => (out += d.toString()));
+//     child.on('exit', code => resolve({ passed: code === 0, output: out }));
+//     child.on('error', reject);
+//   });
+// }
+function runPlaywright(cwd: string, args: string[]): Promise<{ passed: boolean; output: string }> {
   return new Promise((resolve, reject) => {
-    const child = spawn('npx', ['playwright', 'test', ...args], { cwd, shell: true });
+    const child = spawn('npx', ['playwright', 'test', ...args], { cwd }); // no shell:true
     let out = '';
     child.stdout.on('data', d => (out += d.toString()));
     child.stderr.on('data', d => (out += d.toString()));
