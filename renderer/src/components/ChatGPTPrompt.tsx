@@ -9,7 +9,7 @@ import {
 } from '../services/api';
 import { ChatContext } from '../context/ChatContext';
 import { ProjectContext } from '../context/ProjectContext';
-import { ArrowPathIcon, CloudArrowDownIcon } from '@heroicons/react/24/outline';
+import { ArrowPathIcon, CloudArrowDownIcon,XMarkIcon } from '@heroicons/react/24/outline';
 
 export default function ChatGPTPrompt() {
   const { prompt, setPrompt, setGenerated, setLoading, loading } =

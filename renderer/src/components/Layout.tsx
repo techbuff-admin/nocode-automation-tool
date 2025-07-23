@@ -192,10 +192,10 @@ export default function Layout({ children }: { children: ReactNode }) {
             {!collapsed && 'Generate Tests'}
           </NavLink>
 
-          <NavLink to="/actions" className={({ isActive }) => navItemClasses(isActive)}>
+          {/* <NavLink to="/actions" className={({ isActive }) => navItemClasses(isActive)}>
             <CubeIcon className={`h-5 w-5 flex-shrink-0 ${collapsed ? '' : 'mr-3'}`} />
             {!collapsed && 'Action Pool'}
-          </NavLink>
+          </NavLink> */}
 
           <NavLink to="/suite" className={({ isActive }) => navItemClasses(isActive)}>
             <ClipboardIcon className={`h-5 w-5 flex-shrink-0 ${collapsed ? '' : 'mr-3'}`} />

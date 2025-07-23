@@ -127,7 +127,9 @@ export default function Suite() {
 
   // 0) redirect to /projects if no active project
   useEffect(() => {
-    if (!projectDir) navigate('/projects', { replace: true });
+    if (!projectDir)
+      // navigate('/projects', { replace: true });
+    navigate('/projects', { state: { returnTo: '/suite' } });
   }, [projectDir, navigate]);
 
   // 1) wizard step index

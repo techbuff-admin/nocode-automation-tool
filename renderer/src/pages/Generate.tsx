@@ -12,7 +12,7 @@ export default function Generate() {
   const { projectDir } = useContext(ProjectContext)!;
   const navigate = useNavigate();
 
-  // If no projectDir, force them to pick one
+ // If no projectDir, force them to pick one
   if (!projectDir) {
     return (
       <div className="p-6 text-center">
@@ -20,7 +20,8 @@ export default function Generate() {
           Please select a project before generating tests.
         </p>
         <button
-          onClick={() => navigate('/projects')}
+          // onClick={() => navigate('/projects')}
+          onClick={() => navigate('/projects', { state: { returnTo: '/generate' } })}
           className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
         >
           Choose Project

@@ -1,6 +1,6 @@
 // renderer/src/pages/Projects.tsx
 import React, { useEffect, useState, useContext } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate,useLocation } from 'react-router-dom';
 import { ProjectContext } from '../context/ProjectContext';
 import { TrashIcon } from '@heroicons/react/24/outline';
 
@@ -14,7 +14,8 @@ export default function Projects() {
     setProjectName,
   } = useContext(ProjectContext);
   const navigate = useNavigate();
-
+    const location = useLocation();
+    const returnTo = (location.state as any)?.returnTo || '/suite';
   // On mount, fetch root directory & list of projects
   useEffect(() => {
     window.api
@@ -31,7 +32,8 @@ export default function Projects() {
   const openProject = (proj: { name: string; path: string }) => {
     setProjectDir(proj.path);
     setProjectName(proj.name);
-    navigate('/suite');
+    navigate(returnTo);
+    //navigate('/suite');
   };
 
   // Delete a project folder, after confirmation

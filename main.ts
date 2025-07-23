@@ -552,7 +552,8 @@ ipcMain.handle('azure:listWorkItems', async (_evt, projectDir: string) => {
   });
   if (!wiqlRes.ok) {
     const body = await wiqlRes.text();
-    throw new Error(`Azure WIQL failed (${wiqlRes.status}): ${body}`);
+    const shortBody = body.length > 250 ? body.slice(0, 250) + '…' : body;
+    throw new Error(`Azure WIQL failed (${wiqlRes.status}): ${shortBody}`);
   }
   const wiqlData = await wiqlRes.json() as any;
   // wiqlData.workItems will now be at most 50 entries
