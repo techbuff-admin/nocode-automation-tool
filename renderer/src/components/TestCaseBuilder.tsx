@@ -1,3 +1,545 @@
+// // renderer/src/components/TestCaseBuilder.tsx
+// import React, { useEffect, useState } from 'react';
+// import {
+//   DragDropContext,
+//   Droppable,
+//   Draggable,
+//   DropResult,
+// } from '@hello-pangea/dnd';
+// import { PencilIcon, TrashIcon } from '@heroicons/react/24/outline';
+// import {
+//   ProjectMeta,
+//   TestSuite,
+//   TestCase,
+//   Action,
+//   PageObject,
+// } from '../../../shared/types';
+// import ActionPalette from './ActionPalette';
+// import AssertionPalette from './AssertionPalette';
+// import InputDialog from './InputDialog';
+// import LocatorSearch from './LocatorSearch';
+
+// interface Props {
+//   projectDir: string;
+//   suiteName: string;
+//   caseName: string;
+//   meta: ProjectMeta;
+//   onMetaChange: (updated: ProjectMeta) => Promise<void>;
+// }
+
+// export default function TestCaseBuilder({
+//   projectDir,
+//   suiteName,
+//   caseName,
+//   meta,
+//   onMetaChange,
+// }: Props) {
+//   const [steps, setSteps] = useState<Action[]>([]);
+//   const [dialog, setDialog] = useState<{
+//     open: boolean;
+//     title: string;
+//     label: string;
+//     defaultValue: string;
+//     onSubmit: (value: string) => void;
+//   }>({
+//     open: false,
+//     title: '',
+//     label: '',
+//     defaultValue: '',
+//     onSubmit: () => {},
+//   });
+//   const [locPicker, setLocPicker] = useState<{
+//     open: boolean;
+//     actionType: Action['type'] | 'assertion' | null;
+//     stepIndex: number;
+//     isEdit: boolean;
+//     assertionName?: string;
+//   }>({ open: false, actionType: null, stepIndex: -1, isEdit: false });
+
+//   // — helper to map CSS back to its logical page-object key, if any
+//   const getLocatorName = (selector: string): string | undefined => {
+//     for (const pg of meta.pages as PageObject[]) {
+//       const found = Object.entries(pg.selectors).find(([, sel]) => sel === selector);
+//       if (found) return found[0];
+//     }
+//     return undefined;
+//   };
+
+//   // Load existing steps
+//   useEffect(() => {
+//     const suite = meta.suites.find(s => s.name === suiteName);
+//     const tc = suite?.cases.find(c => c.name === caseName);
+//     setSteps(tc?.actions || []);
+//   }, [meta, suiteName, caseName]);
+
+//   // Persist updated steps
+//   const saveSteps = async (newSteps: Action[]) => {
+//     const updatedMeta = { ...meta };
+//     updatedMeta.suites = updatedMeta.suites.map((s: TestSuite) =>
+//       s.name === suiteName
+//         ? {
+//             ...s,
+//             cases: s.cases.map((c: TestCase) =>
+//               c.name === caseName ? { ...c, actions: newSteps } : c
+//             ),
+//           }
+//         : s
+//     );
+//     await onMetaChange(updatedMeta);
+//     setSteps(newSteps);
+//   };
+
+//   const finalizeInsert = (action: Action, index: number) => {
+//     const ns = [...steps];
+//     ns.splice(index, 0, action);
+//     saveSteps(ns);
+//   };
+//   const finalizeUpdate = (action: Action, index: number) => {
+//     const ns = [...steps];
+//     ns[index] = action;
+//     saveSteps(ns);
+//   };
+
+//   const onDragEnd = (res: DropResult) => {
+//     const { source, destination, draggableId } = res;
+//     if (!destination) return;
+
+//     // — Assertions palette → steps —
+//     if (source.droppableId === 'assertions' && destination.droppableId === 'steps') {
+//       const name = draggableId;
+//       // page-level only
+//       if (name === 'toHaveURL' || name === 'toHaveTitle') {
+//         setDialog({
+//           open: true,
+//           title: `Enter value for ${name}`,
+//           label: 'Value:',
+//           defaultValue: '',
+//           onSubmit: val => {
+//             setDialog(d => ({ ...d, open: false }));
+//             finalizeInsert(
+//               { type: 'assertion', assertion: name, expected: val },
+//               destination.index
+//             );
+//           },
+//         });
+//         return;
+//       }
+//       // locator-based assertions
+//       setLocPicker({
+//         open: true,
+//         actionType: 'assertion',
+//         stepIndex: destination.index,
+//         isEdit: false,
+//         assertionName: name,
+//       });
+//       return;
+//     }
+
+//     // — Actions palette → steps —
+//     if (source.droppableId === 'palette' && destination.droppableId === 'steps') {
+//       const type = draggableId as Action['type'];
+
+//       // screenshot (page‐level)
+//       if (type === 'screenshot') {
+//         finalizeInsert({ type: 'screenshot', selector: '' }, destination.index);
+//         return;
+//       }
+
+//       // locator‐based actions
+//       if (
+//         [
+//           'click','fill','dblclick','hover','press',
+//           'check','uncheck','selectOption','setInputFiles',
+//         ].includes(type)
+//       ) {
+//         setLocPicker({
+//           open: true,
+//           actionType: type,
+//           stepIndex: destination.index,
+//           isEdit: false,
+//         });
+//         return;
+//       }
+
+//       // goto URL
+//       if (type === 'goto') {
+//         setDialog({
+//           open: true,
+//           title: 'Navigate to URL',
+//           label: 'Enter URL:',
+//           defaultValue: '',
+//           onSubmit: url => {
+//             setDialog(d => ({ ...d, open: false }));
+//             if (url) finalizeInsert({ type, url } as Action, destination.index);
+//           },
+//         });
+//         return;
+//       }
+
+//       // wait timeout
+//       if (type === 'wait') {
+//         setDialog({
+//           open: true,
+//           title: 'Wait Timeout',
+//           label: 'Enter milliseconds:',
+//           defaultValue: '1000',
+//           onSubmit: ms => {
+//             setDialog(d => ({ ...d, open: false }));
+//             const t = parseInt(ms, 10);
+//             if (!isNaN(t)) finalizeInsert({ type, timeout: t } as Action, destination.index);
+//           },
+//         });
+//         return;
+//       }
+//     }
+
+//     // — Reorder within steps —
+//     if (
+//       source.droppableId === 'steps' &&
+//       destination.droppableId === 'steps'
+//     ) {
+//       const ns = Array.from(steps);
+//       const [moved] = ns.splice(source.index, 1);
+//       ns.splice(destination.index, 0, moved);
+//       saveSteps(ns);
+//     }
+//   };
+
+//   // Inline‐edit handler
+//   const handleStepEdit = (index: number) => {
+//     const act = steps[index];
+//     // Assertions
+//     if (act.type === 'assertion') {
+//       const name = act.assertion;
+//       if (name === 'toHaveURL' || name === 'toHaveTitle') {
+//         setDialog({
+//           open: true,
+//           title: `Edit value for ${name}`,
+//           label: 'Value:',
+//           defaultValue: act.expected as string || '',
+//           onSubmit: val => {
+//             setDialog(d => ({ ...d, open: false }));
+//             finalizeUpdate({ ...act, expected: val }, index);
+//           },
+//         });
+//         return;
+//       }
+//       if (!act.expected) {
+//         setLocPicker({
+//           open: true,
+//           actionType: 'assertion',
+//           stepIndex: index,
+//           isEdit: true,
+//           assertionName: name,
+//         });
+//         return;
+//       }
+//       setDialog({
+//         open: true,
+//         title: `Edit expected for ${name}`,
+//         label: 'Expected:',
+//         defaultValue: String(act.expected),
+//         onSubmit: val => {
+//           setDialog(d => ({ ...d, open: false }));
+//           const expected = name === 'toHaveCount' ? parseInt(val, 10) : val;
+//           finalizeUpdate({ ...act, expected }, index);
+//         },
+//       });
+//       return;
+//     }
+
+//     // Actions
+//     if (
+//       [
+//         'click','fill','dblclick','hover','press',
+//         'check','uncheck','selectOption','setInputFiles',
+//       ].includes(act.type)
+//     ) {
+//       setLocPicker({
+//         open: true,
+//         actionType: act.type,
+//         stepIndex: index,
+//         isEdit: true,
+//       });
+//       return;
+//     }
+//     if (act.type === 'goto') {
+//       setDialog({
+//         open: true,
+//         title: 'Edit URL',
+//         label: 'Enter URL:',
+//         defaultValue: act.url,
+//         onSubmit: url => {
+//           setDialog(d => ({ ...d, open: false }));
+//           finalizeUpdate({ type: 'goto', url }, index);
+//         },
+//       });
+//       return;
+//     }
+//     if (act.type === 'screenshot') {
+//       return; // nothing to edit
+//     }
+//     if (act.type === 'wait') {
+//       setDialog({
+//         open: true,
+//         title: 'Edit Timeout',
+//         label: 'Enter ms:',
+//         defaultValue: String(act.timeout),
+//         onSubmit: ms => {
+//           setDialog(d => ({ ...d, open: false }));
+//           const t = parseInt(ms, 10);
+//           if (!isNaN(t)) finalizeUpdate({ type: 'wait', timeout: t }, index);
+//         },
+//       });
+//       return;
+//     }
+//   };
+
+//   // Locator or assertion selection handler
+//   const handleLocatorSelect = (key: string) => {
+//     const { actionType, stepIndex, isEdit, assertionName } = locPicker;
+//     let selector = key;
+//     for (const pg of meta.pages as PageObject[]) {
+//       if (pg.selectors[key] !== undefined) {
+//         selector = pg.selectors[key];
+//         break;
+//       }
+//     }
+
+//     // Assertions
+//     if (actionType === 'assertion' && assertionName) {
+//       const name = assertionName;
+//       const needsValue = [
+//         'toHaveText','toHaveValue','toContainText',
+//         'toHaveAttribute','toHaveClass','toHaveCount',
+//       ].includes(name);
+//       if (needsValue) {
+//         setDialog({
+//           open: true,
+//           title: `Enter expected for ${name}`,
+//           label: 'Expected:',
+//           defaultValue: '',
+//           onSubmit: val => {
+//             setDialog(d => ({ ...d, open: false }));
+//             finalizeInsert(
+//               {
+//                 type: 'assertion',
+//                 assertion: name,
+//                 selector,
+//                 expected: name === 'toHaveCount' ? parseInt(val, 10) : val,
+//               },
+//               stepIndex
+//             );
+//           },
+//         });
+//       } else {
+//         finalizeInsert(
+//           { type: 'assertion', assertion: name, selector },
+//           stepIndex
+//         );
+//       }
+//       setLocPicker(lp => ({ ...lp, open: false }));
+//       return;
+//     }
+
+//     // Actions
+//     let action: any;
+//     switch (actionType) {
+//       case 'fill':
+//         setDialog({
+//           open: true,
+//           title: `Enter value for ${key}`,
+//           label: 'Value:',
+//           defaultValue: '',
+//           onSubmit: val => {
+//             setDialog(d => ({ ...d, open: false }));
+//             action = { type: 'fill', selector, value: val };
+//             isEdit ? finalizeUpdate(action, stepIndex) : finalizeInsert(action, stepIndex);
+//           },
+//         });
+//         break;
+//       case 'press':
+//         setDialog({
+//           open: true,
+//           title: 'Enter key:',
+//           label: 'Key:',
+//           defaultValue: '',
+//           onSubmit: val => {
+//             setDialog(d => ({ ...d, open: false }));
+//             action = { type: 'press', selector, key: val };
+//             isEdit ? finalizeUpdate(action, stepIndex) : finalizeInsert(action, stepIndex);
+//           },
+//         });
+//         break;
+//       case 'selectOption':
+//         setDialog({
+//           open: true,
+//           title: 'Enter option value:',
+//           label: 'Value:',
+//           defaultValue: '',
+//           onSubmit: val => {
+//             setDialog(d => ({ ...d, open: false }));
+//             action = { type: 'selectOption', selector, value: val };
+//             isEdit ? finalizeUpdate(action, stepIndex) : finalizeInsert(action, stepIndex);
+//           },
+//         });
+//         break;
+//       case 'setInputFiles':
+//         setDialog({
+//           open: true,
+//           title: 'Enter file paths (comma-sep):',
+//           label: 'Files:',
+//           defaultValue: '',
+//           onSubmit: csv => {
+//             setDialog(d => ({ ...d, open: false }));
+//             action = { type: 'setInputFiles', selector, files: csv.split(',').map(s=>s.trim()) };
+//             isEdit ? finalizeUpdate(action, stepIndex) : finalizeInsert(action, stepIndex);
+//           },
+//         });
+//         break;
+//       default:
+//         action = { type: actionType!, selector };
+//         isEdit ? finalizeUpdate(action, stepIndex) : finalizeInsert(action, stepIndex);
+//     }
+//     setLocPicker(lp => ({ ...lp, open: false }));
+//   };
+
+//   const handleLocatorAdd = () =>
+//     setDialog({
+//       open: true,
+//       title: 'New Locator CSS',
+//       label: 'CSS Selector:',
+//       defaultValue: '',
+//       onSubmit: css => {
+//         setDialog(d => ({ ...d, open: false }));
+//         handleLocatorSelect(css);
+//       },
+//     });
+
+//   return (
+//     <div>
+//       <h4 className="text-lg font-medium mb-2">Available Actions</h4>
+//       <DragDropContext onDragEnd={onDragEnd}>
+//         <ActionPalette />
+
+//         <h4 className="text-lg font-medium mb-2">Available Assertions</h4>
+//         <AssertionPalette />
+
+//         <h4 className="text-lg font-medium mb-2">Steps for “{caseName}”</h4>
+//         <Droppable droppableId="steps">
+//           {prov => (
+//             <div
+//               ref={prov.innerRef}
+//               {...prov.droppableProps}
+//               className="min-h-[200px] p-2 border border-dashed rounded"
+//             >
+//               {steps.map((act, idx) => (
+//                 <Draggable key={`${act.type}-${idx}`} draggableId={`${act.type}-${idx}`} index={idx}>
+//                   {p => (
+//                     <div
+//                       ref={p.innerRef}
+//                       {...p.draggableProps}
+//                       {...p.dragHandleProps}
+//                       className="flex items-center justify-between p-2 mb-2 bg-white shadow cursor-move"
+//                     >
+//                       <span className="flex-1">
+//                         {/* Goto & Wait */}
+//                         {act.type === 'goto' && `Goto: ${act.url}`}
+//                         {act.type === 'wait' && `Wait ${act.timeout}ms`}
+
+//                         {/* Click/Dblclick/Hover/Check/Uncheck */}
+//                         {['click','dblclick','hover','check','uncheck'].includes(act.type) && (() => {
+//                           const key = getLocatorName(act.selector);
+//                           return `${act.type}: ${key ? `${key} (` : ''}${act.selector}${key ? `)` : ''}`;
+//                         })()}
+
+//                         {/* Fill */}
+//                         {act.type === 'fill' && (() => {
+//                           const key = getLocatorName(act.selector);
+//                           return `Fill ${key ? `${key} (` : ''}${act.selector}${key ? `)` : ''} = ${act.value}`;
+//                         })()}
+
+//                         {/* Press */}
+//                         {act.type === 'press' && (() => {
+//                           const key = getLocatorName(act.selector);
+//                           return `Press ${act.key} on ${key ? `${key} (` : ''}${act.selector}${key ? `)` : ''}`;
+//                         })()}
+
+//                         {/* SelectOption */}
+//                         {act.type === 'selectOption' && (() => {
+//                           const key = getLocatorName(act.selector);
+//                           return `SelectOption ${key ? `${key} (` : ''}${act.selector}${key ? `)` : ''} = ${act.value}`;
+//                         })()}
+
+//                         {/* SetInputFiles */}
+//                         {act.type === 'setInputFiles' && (() => {
+//                           const key = getLocatorName(act.selector);
+//                           return `SetFiles ${key ? `${key} (` : ''}${act.selector}${key ? `)` : ''} = ${act.files.join(', ')}`;
+//                         })()}
+
+//                         {/* Screenshot */}
+//                         {act.type === 'screenshot' && `Capture Page Screenshot`}
+
+//                         {/* Assertions */}
+//                         {act.type === 'assertion' && (() => {
+//                           const { assertion, selector, expected } = act;
+//                           // page‐level
+//                           if (assertion === 'toHaveURL' || assertion === 'toHaveTitle') {
+//                             return `expect(page).${assertion}(${JSON.stringify(expected)})`;
+//                           }
+//                           // locator‐based
+//                           const key = getLocatorName(selector) ?? selector;
+//                           if (expected !== undefined) {
+//                             return `expect(page.locator('${selector}')).${assertion}(${JSON.stringify(expected)})  // on ${key}`;
+//                           }
+//                           return `expect(page.locator('${selector}')).${assertion}()  // on ${key}`;
+//                         })()}
+//                       </span>
+//                       <div className="flex space-x-2">
+//                         <button onClick={() => handleStepEdit(idx)} className="text-blue-500">
+//                           <PencilIcon className="h-5 w-5" />
+//                         </button>
+//                         <button
+//                           onClick={() => {
+//                             const ns = [...steps];
+//                             ns.splice(idx, 1);
+//                             saveSteps(ns);
+//                           }}
+//                           className="text-red-500"
+//                         >
+//                           <TrashIcon className="h-5 w-5" />
+//                         </button>
+//                       </div>
+//                     </div>
+//                   )}
+//                 </Draggable>
+//               ))}
+//               {prov.placeholder}
+//             </div>
+//           )}
+//         </Droppable>
+//       </DragDropContext>
+
+//       {locPicker.open && (
+//         <LocatorSearch
+//           pages={meta.pages as PageObject[]}
+//           onSelect={handleLocatorSelect}
+//           onAddNew={handleLocatorAdd}
+//           onClose={() => setLocPicker(lp => ({ ...lp, open: false }))}
+//         />
+//       )}
+
+//       <InputDialog
+//         open={dialog.open}
+//         title={dialog.title}
+//         label={dialog.label}
+//         defaultValue={dialog.defaultValue}
+//         onSubmit={dialog.onSubmit}
+//         onCancel={() => setDialog(d => ({ ...d, open: false }))}
+//       />
+//     </div>
+//   );
+// }
 // renderer/src/components/TestCaseBuilder.tsx
 import React, { useEffect, useState } from 'react';
 import {
@@ -18,6 +560,12 @@ import ActionPalette from './ActionPalette';
 import AssertionPalette from './AssertionPalette';
 import InputDialog from './InputDialog';
 import LocatorSearch from './LocatorSearch';
+
+const PanelTitle = ({ children }: { children: React.ReactNode }) => (
+  <h4 className="text-sm font-semibold mb-2 uppercase tracking-wide text-gray-600">
+    {children}
+  </h4>
+);
 
 interface Props {
   projectDir: string;
@@ -56,7 +604,7 @@ export default function TestCaseBuilder({
     assertionName?: string;
   }>({ open: false, actionType: null, stepIndex: -1, isEdit: false });
 
-  // — helper to map CSS back to its logical page-object key, if any
+  // Map CSS back to PO key if any
   const getLocatorName = (selector: string): string | undefined => {
     for (const pg of meta.pages as PageObject[]) {
       const found = Object.entries(pg.selectors).find(([, sel]) => sel === selector);
@@ -65,14 +613,14 @@ export default function TestCaseBuilder({
     return undefined;
   };
 
-  // Load existing steps
+  // Load steps
   useEffect(() => {
     const suite = meta.suites.find(s => s.name === suiteName);
     const tc = suite?.cases.find(c => c.name === caseName);
     setSteps(tc?.actions || []);
   }, [meta, suiteName, caseName]);
 
-  // Persist updated steps
+  // Save steps
   const saveSteps = async (newSteps: Action[]) => {
     const updatedMeta = { ...meta };
     updatedMeta.suites = updatedMeta.suites.map((s: TestSuite) =>
@@ -104,10 +652,9 @@ export default function TestCaseBuilder({
     const { source, destination, draggableId } = res;
     if (!destination) return;
 
-    // — Assertions palette → steps —
+    // Assertions → steps
     if (source.droppableId === 'assertions' && destination.droppableId === 'steps') {
       const name = draggableId;
-      // page-level only
       if (name === 'toHaveURL' || name === 'toHaveTitle') {
         setDialog({
           open: true,
@@ -116,15 +663,11 @@ export default function TestCaseBuilder({
           defaultValue: '',
           onSubmit: val => {
             setDialog(d => ({ ...d, open: false }));
-            finalizeInsert(
-              { type: 'assertion', assertion: name, expected: val },
-              destination.index
-            );
+            finalizeInsert({ type: 'assertion', assertion: name, expected: val }, destination.index);
           },
         });
         return;
       }
-      // locator-based assertions
       setLocPicker({
         open: true,
         actionType: 'assertion',
@@ -135,17 +678,15 @@ export default function TestCaseBuilder({
       return;
     }
 
-    // — Actions palette → steps —
+    // Actions → steps
     if (source.droppableId === 'palette' && destination.droppableId === 'steps') {
       const type = draggableId as Action['type'];
 
-      // screenshot (page‐level)
       if (type === 'screenshot') {
         finalizeInsert({ type: 'screenshot', selector: '' }, destination.index);
         return;
       }
 
-      // locator‐based actions
       if (
         [
           'click','fill','dblclick','hover','press',
@@ -161,7 +702,6 @@ export default function TestCaseBuilder({
         return;
       }
 
-      // goto URL
       if (type === 'goto') {
         setDialog({
           open: true,
@@ -176,7 +716,6 @@ export default function TestCaseBuilder({
         return;
       }
 
-      // wait timeout
       if (type === 'wait') {
         setDialog({
           open: true,
@@ -193,11 +732,8 @@ export default function TestCaseBuilder({
       }
     }
 
-    // — Reorder within steps —
-    if (
-      source.droppableId === 'steps' &&
-      destination.droppableId === 'steps'
-    ) {
+    // Reorder
+    if (source.droppableId === 'steps' && destination.droppableId === 'steps') {
       const ns = Array.from(steps);
       const [moved] = ns.splice(source.index, 1);
       ns.splice(destination.index, 0, moved);
@@ -205,10 +741,10 @@ export default function TestCaseBuilder({
     }
   };
 
-  // Inline‐edit handler
+  // Edit handler
   const handleStepEdit = (index: number) => {
     const act = steps[index];
-    // Assertions
+
     if (act.type === 'assertion') {
       const name = act.assertion;
       if (name === 'toHaveURL' || name === 'toHaveTitle') {
@@ -216,7 +752,7 @@ export default function TestCaseBuilder({
           open: true,
           title: `Edit value for ${name}`,
           label: 'Value:',
-          defaultValue: act.expected as string || '',
+          defaultValue: (act.expected as string) || '',
           onSubmit: val => {
             setDialog(d => ({ ...d, open: false }));
             finalizeUpdate({ ...act, expected: val }, index);
@@ -248,7 +784,6 @@ export default function TestCaseBuilder({
       return;
     }
 
-    // Actions
     if (
       [
         'click','fill','dblclick','hover','press',
@@ -276,9 +811,6 @@ export default function TestCaseBuilder({
       });
       return;
     }
-    if (act.type === 'screenshot') {
-      return; // nothing to edit
-    }
     if (act.type === 'wait') {
       setDialog({
         open: true,
@@ -295,7 +827,7 @@ export default function TestCaseBuilder({
     }
   };
 
-  // Locator or assertion selection handler
+  // Locator pick
   const handleLocatorSelect = (key: string) => {
     const { actionType, stepIndex, isEdit, assertionName } = locPicker;
     let selector = key;
@@ -333,10 +865,7 @@ export default function TestCaseBuilder({
           },
         });
       } else {
-        finalizeInsert(
-          { type: 'assertion', assertion: name, selector },
-          stepIndex
-        );
+        finalizeInsert({ type: 'assertion', assertion: name, selector }, stepIndex);
       }
       setLocPicker(lp => ({ ...lp, open: false }));
       return;
@@ -392,7 +921,7 @@ export default function TestCaseBuilder({
           defaultValue: '',
           onSubmit: csv => {
             setDialog(d => ({ ...d, open: false }));
-            action = { type: 'setInputFiles', selector, files: csv.split(',').map(s=>s.trim()) };
+            action = { type: 'setInputFiles', selector, files: csv.split(',').map(s => s.trim()) };
             isEdit ? finalizeUpdate(action, stepIndex) : finalizeInsert(action, stepIndex);
           },
         });
@@ -417,109 +946,104 @@ export default function TestCaseBuilder({
     });
 
   return (
-    <div>
-      <h4 className="text-lg font-medium mb-2">Available Actions</h4>
-      <DragDropContext onDragEnd={onDragEnd}>
-        <ActionPalette />
+    <DragDropContext onDragEnd={onDragEnd}>
+      {/* 17.5% / 65% / 17.5% columns */}
+      <div className="grid grid-cols-[20%_60%_20%] gap-4 h-[calc(100vh-200px)]">
+        {/* LEFT: Actions */}
+        <aside className="overflow-auto border rounded-lg p-3 bg-gray-50">
+          <PanelTitle>Actions</PanelTitle>
+          <ActionPalette />
+        </aside>
 
-        <h4 className="text-lg font-medium mb-2">Available Assertions</h4>
-        <AssertionPalette />
-
-        <h4 className="text-lg font-medium mb-2">Steps for “{caseName}”</h4>
-        <Droppable droppableId="steps">
-          {prov => (
-            <div
-              ref={prov.innerRef}
-              {...prov.droppableProps}
-              className="min-h-[200px] p-2 border border-dashed rounded"
-            >
-              {steps.map((act, idx) => (
-                <Draggable key={`${act.type}-${idx}`} draggableId={`${act.type}-${idx}`} index={idx}>
-                  {p => (
-                    <div
-                      ref={p.innerRef}
-                      {...p.draggableProps}
-                      {...p.dragHandleProps}
-                      className="flex items-center justify-between p-2 mb-2 bg-white shadow cursor-move"
-                    >
-                      <span className="flex-1">
-                        {/* Goto & Wait */}
-                        {act.type === 'goto' && `Goto: ${act.url}`}
-                        {act.type === 'wait' && `Wait ${act.timeout}ms`}
-
-                        {/* Click/Dblclick/Hover/Check/Uncheck */}
-                        {['click','dblclick','hover','check','uncheck'].includes(act.type) && (() => {
-                          const key = getLocatorName(act.selector);
-                          return `${act.type}: ${key ? `${key} (` : ''}${act.selector}${key ? `)` : ''}`;
-                        })()}
-
-                        {/* Fill */}
-                        {act.type === 'fill' && (() => {
-                          const key = getLocatorName(act.selector);
-                          return `Fill ${key ? `${key} (` : ''}${act.selector}${key ? `)` : ''} = ${act.value}`;
-                        })()}
-
-                        {/* Press */}
-                        {act.type === 'press' && (() => {
-                          const key = getLocatorName(act.selector);
-                          return `Press ${act.key} on ${key ? `${key} (` : ''}${act.selector}${key ? `)` : ''}`;
-                        })()}
-
-                        {/* SelectOption */}
-                        {act.type === 'selectOption' && (() => {
-                          const key = getLocatorName(act.selector);
-                          return `SelectOption ${key ? `${key} (` : ''}${act.selector}${key ? `)` : ''} = ${act.value}`;
-                        })()}
-
-                        {/* SetInputFiles */}
-                        {act.type === 'setInputFiles' && (() => {
-                          const key = getLocatorName(act.selector);
-                          return `SetFiles ${key ? `${key} (` : ''}${act.selector}${key ? `)` : ''} = ${act.files.join(', ')}`;
-                        })()}
-
-                        {/* Screenshot */}
-                        {act.type === 'screenshot' && `Capture Page Screenshot`}
-
-                        {/* Assertions */}
-                        {act.type === 'assertion' && (() => {
-                          const { assertion, selector, expected } = act;
-                          // page‐level
-                          if (assertion === 'toHaveURL' || assertion === 'toHaveTitle') {
-                            return `expect(page).${assertion}(${JSON.stringify(expected)})`;
-                          }
-                          // locator‐based
-                          const key = getLocatorName(selector) ?? selector;
-                          if (expected !== undefined) {
-                            return `expect(page.locator('${selector}')).${assertion}(${JSON.stringify(expected)})  // on ${key}`;
-                          }
-                          return `expect(page.locator('${selector}')).${assertion}()  // on ${key}`;
-                        })()}
-                      </span>
-                      <div className="flex space-x-2">
-                        <button onClick={() => handleStepEdit(idx)} className="text-blue-500">
-                          <PencilIcon className="h-5 w-5" />
-                        </button>
-                        <button
-                          onClick={() => {
-                            const ns = [...steps];
-                            ns.splice(idx, 1);
-                            saveSteps(ns);
-                          }}
-                          className="text-red-500"
-                        >
-                          <TrashIcon className="h-5 w-5" />
-                        </button>
+        {/* CENTER: Steps */}
+        <section className="flex flex-col overflow-hidden">
+          <PanelTitle>Steps for “{caseName}”</PanelTitle>
+          <Droppable droppableId="steps">
+            {prov => (
+              <div
+                ref={prov.innerRef}
+                {...prov.droppableProps}
+                className="flex-1 overflow-auto min-h-[200px] p-2 border border-dashed rounded bg-white"
+              >
+                {steps.map((act, idx) => (
+                  <Draggable key={`${act.type}-${idx}`} draggableId={`${act.type}-${idx}`} index={idx}>
+                    {p => (
+                      <div
+                        ref={p.innerRef}
+                        {...p.draggableProps}
+                        {...p.dragHandleProps}
+                        className="flex items-center justify-between p-2 mb-2 bg-gray-100 shadow-sm rounded cursor-move"
+                      >
+                        <span className="flex-1">
+                          {/* Render labels */}
+                          {act.type === 'goto' && `Goto: ${act.url}`}
+                          {act.type === 'wait' && `Wait ${act.timeout}ms`}
+                          {['click','dblclick','hover','check','uncheck'].includes(act.type) && (() => {
+                            const key = getLocatorName(act.selector);
+                            return `${act.type}: ${key ? `${key} (` : ''}${act.selector}${key ? `)` : ''}`;
+                          })()}
+                          {act.type === 'fill' && (() => {
+                            const key = getLocatorName(act.selector);
+                            return `Fill ${key ? `${key} (` : ''}${act.selector}${key ? `)` : ''} = ${act.value}`;
+                          })()}
+                          {act.type === 'press' && (() => {
+                            const key = getLocatorName(act.selector);
+                            return `Press ${act.key} on ${key ? `${key} (` : ''}${act.selector}${key ? `)` : ''}`;
+                          })()}
+                          {act.type === 'selectOption' && (() => {
+                            const key = getLocatorName(act.selector);
+                            return `SelectOption ${key ? `${key} (` : ''}${act.selector}${key ? `)` : ''} = ${act.value}`;
+                          })()}
+                          {act.type === 'setInputFiles' && (() => {
+                            const key = getLocatorName(act.selector);
+                            return `SetFiles ${key ? `${key} (` : ''}${act.selector}${key ? `)` : ''} = ${act.files.join(', ')}`;
+                          })()}
+                          {act.type === 'screenshot' && `Capture Page Screenshot`}
+                          {act.type === 'assertion' && (() => {
+                            const { assertion, selector, expected } = act;
+                            if (assertion === 'toHaveURL' || assertion === 'toHaveTitle') {
+                              return `expect(page).${assertion}(${JSON.stringify(expected)})`;
+                            }
+                            const key = getLocatorName(selector) ?? selector;
+                            if (expected !== undefined) {
+                              return `expect(page.locator('${selector}')).${assertion}(${JSON.stringify(expected)})  // on ${key}`;
+                            }
+                            return `expect(page.locator('${selector}')).${assertion}()  // on ${key}`;
+                          })()}
+                        </span>
+                        <div className="flex space-x-2">
+                          <button onClick={() => handleStepEdit(idx)} className="text-blue-500">
+                            <PencilIcon className="h-5 w-5" />
+                          </button>
+                          <button
+                            onClick={() => {
+                              const ns = [...steps];
+                              ns.splice(idx, 1);
+                              saveSteps(ns);
+                            }}
+                            className="text-red-500"
+                          >
+                            <TrashIcon className="h-5 w-5" />
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  )}
-                </Draggable>
-              ))}
-              {prov.placeholder}
-            </div>
-          )}
-        </Droppable>
-      </DragDropContext>
+                    )}
+                  </Draggable>
+                ))}
+                {prov.placeholder}
+              </div>
+            )}
+          </Droppable>
+        </section>
 
+        {/* RIGHT: Assertions */}
+        <aside className="overflow-auto border rounded-lg p-3 bg-gray-50">
+          <PanelTitle>Assertions</PanelTitle>
+          <AssertionPalette />
+        </aside>
+      </div>
+
+      {/* Modals/dialogs */}
       {locPicker.open && (
         <LocatorSearch
           pages={meta.pages as PageObject[]}
@@ -537,6 +1061,6 @@ export default function TestCaseBuilder({
         onSubmit={dialog.onSubmit}
         onCancel={() => setDialog(d => ({ ...d, open: false }))}
       />
-    </div>
+    </DragDropContext>
   );
 }

@@ -46,7 +46,7 @@ export default function AssertionPalette() {
           <div
             ref={provided.innerRef}
             {...provided.droppableProps}
-            className="flex flex-wrap gap-2 mb-2"
+            className="flex flex-wrap gap-4 mb-2"
           >
             {list.map((assertion, idx) => {
               const Icon = assertion.icon;
